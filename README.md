@@ -23,9 +23,11 @@ graph TB
   end
 
   subgraph InputLayer ["输入与交互层"]
+    EventDispatcher["EventDispatcher<br/>集中状态管理 / 事件派发"]
     InputManager["InputManager<br/>隐藏 textarea"]
     KeyboardHandler["KeyboardHandler<br/>快捷键 / 方向键"]
     HitTester["HitTester<br/>点击定位"]
+    CoordTransformer["CoordTransformer<br/>坐标系转换"]
     Scrollbar["Scrollbar<br/>自定义滚动条"]
   end
 
@@ -35,7 +37,10 @@ graph TB
   TextMeasurer --> LayoutEngine
   LayoutEngine --> StaticCanvas
   LayoutEngine --> SelectionCanvas
-  InputManager --> BlockStore
+  InputManager --> EventDispatcher
+  EventDispatcher --> KeyboardHandler
+  EventDispatcher --> HitTester
+  EventDispatcher --> CoordTransformer
   KeyboardHandler --> BlockStore
   HitTester --> BlockStore
 ```
@@ -249,6 +254,36 @@ flowchart TD
 
 - 方向键可以跳过 HR 到达上下方的块
 - Delete/Backspace 可以删除相邻的 HR
+
+## 事件派发与坐标转换
+
+### EventDispatcher
+
+`EventDispatcher` 是编辑器的集中状态管理和事件派发中心，解耦 UI 组件与核心逻辑：
+
+- **集中管理 `EditorState`**：`cursor`、`selection`、`compositionText`、`isDragging` 等编辑器核心状态
+- **事件派发**：提供 `subscribe` 机制，UI 层订阅 `cursorChanged`、`selectionChanged`、`dataChanged` 等事件驱动重渲染
+- **交互入口**：`handlePointerDown` / `handlePointerMove` / `handlePointerUp` 将浏览器指针事件转换为编辑器状态更新
+- **键盘委托**：`handleKeyDown` 委托 `KeyboardHandler` 处理并返回 `KeyboardAction`，由上层执行后续操作
+
+```mermaid
+flowchart LR
+  PointerEvent["指针事件"] --> ED["EventDispatcher"]
+  KeyboardEvent["键盘事件"] --> ED
+  ED --> |"hitTest"| HT["HitTester"]
+  ED --> |"键盘处理"| KH["KeyboardHandler"]
+  ED --> |"坐标转换"| CT["CoordTransformer"]
+  ED --> |"状态变更"| Listeners["UI 订阅者"]
+```
+
+### CoordTransformer
+
+`CoordTransformer` 负责浏览器视口坐标与编辑器场景坐标之间的转换：
+
+- **`browserToScene`**：浏览器坐标 − 容器偏移 + 滚动量 = 场景坐标
+- **`sceneToBrowser`**：反向转换，用于需要将场景元素映射回屏幕位置的场景
+- **`clampScroll`**：将滚动量钳制到合法范围 `[0, maxContentHeight - viewportHeight + 40]`
+- **`isInViewport`**：判断场景中的元素是否在当前视口内可见（视口裁剪优化）
 
 ## 滚动管理
 
