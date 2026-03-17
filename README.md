@@ -6,6 +6,19 @@
 
 ```mermaid
 graph TB
+  subgraph AppLayer ["应用层"]
+    App["App.tsx<br/>React 组件 / refs + state"]
+    EditorMgr["EditorManager<br/>画布管理 / 事件注册 / 生命周期"]
+    Scrollbar["Scrollbar<br/>自定义滚动条组件"]
+  end
+
+  subgraph InputLayer ["输入与交互层"]
+    EventDispatcher["EventDispatcher<br/>事件中心 / 状态管理"]
+    InputManager["InputManager<br/>隐藏 textarea"]
+    KeyboardHandler["KeyboardHandler<br/>快捷键 / 方向键"]
+    HitTester["HitTester<br/>点击定位"]
+  end
+
   subgraph DataLayer ["数据层"]
     BlockStore["BlockStore<br/>块管理器 / 单一数据源"]
     InlineParser["InlineParser<br/>实时内联 Markdown 解析"]
@@ -22,27 +35,25 @@ graph TB
     SelectionCanvas["SelectionCanvas<br/>光标 / 选区 / IME"]
   end
 
-  subgraph InputLayer ["输入与交互层"]
-    EventDispatcher["EventDispatcher<br/>集中状态管理 / 事件派发"]
-    InputManager["InputManager<br/>隐藏 textarea"]
-    KeyboardHandler["KeyboardHandler<br/>快捷键 / 方向键"]
-    HitTester["HitTester<br/>点击定位"]
-    CoordTransformer["CoordTransformer<br/>坐标系转换"]
-    Scrollbar["Scrollbar<br/>自定义滚动条"]
-  end
-
+  App -->|"init()"| EditorMgr
+  App --> Scrollbar
+  EditorMgr -->|"创建 + 管理"| InputManager
+  EditorMgr -->|"pointer/wheel/resize"| EventDispatcher
+  EditorMgr -->|"渲染"| StaticCanvas
+  EditorMgr -->|"渲染"| SelectionCanvas
+  EditorMgr -->|"React 状态回调"| App
+  InputManager -->|"textarea 事件"| EventDispatcher
+  EventDispatcher -->|"键盘处理"| KeyboardHandler
+  EventDispatcher -->|"点击定位"| HitTester
+  EventDispatcher -->|"数据修改"| BlockStore
+  EventDispatcher -->|"重排布局"| LayoutEngine
+  EventDispatcher -->|"渲染通知"| EditorMgr
   MarkdownParser --> BlockStore
   InlineParser --> BlockStore
   BlockStore --> LayoutEngine
   TextMeasurer --> LayoutEngine
   LayoutEngine --> StaticCanvas
   LayoutEngine --> SelectionCanvas
-  InputManager --> EventDispatcher
-  EventDispatcher --> KeyboardHandler
-  EventDispatcher --> HitTester
-  EventDispatcher --> CoordTransformer
-  KeyboardHandler --> BlockStore
-  HitTester --> BlockStore
 ```
 
 ## 核心设计理念
@@ -56,8 +67,13 @@ graph TB
 
 ```
 src/
-├── App.tsx                          # 主组件，集成所有模块
+├── App.tsx                          # 主组件（~60 行），refs + init() + JSX
 ├── App.css                          # 布局与滚动条样式
+├── editor/
+│   ├── EditorManager.ts             # 画布管理类 + 核心模块单例
+│   └── sampleContent.ts             # 初始示例 Markdown 内容
+├── components/
+│   └── Scrollbar.tsx                # 自定义滚动条组件
 ├── core/
 │   ├── types.ts                     # 核心类型定义
 │   ├── BlockStore.ts                # 块数据管理器
@@ -73,7 +89,7 @@ src/
 │   ├── KeyboardHandler.ts           # 键盘事件处理
 │   ├── HitTester.ts                 # 点击位置 -> 光标定位
 │   ├── CoordTransformer.ts          # 坐标系转换
-│   └── EventDispatcher.ts           # 事件派发
+│   └── EventDispatcher.ts           # 事件派发与状态管理
 ```
 
 ## 数据模型
@@ -255,25 +271,47 @@ flowchart TD
 - 方向键可以跳过 HR 到达上下方的块
 - Delete/Backspace 可以删除相邻的 HR
 
-## 事件派发与坐标转换
+## 组件与管理架构
+
+### EditorManager
+
+`EditorManager` 是画布管理类，负责 Canvas 渲染、事件注册和生命周期管理。核心模块（BlockStore、LayoutEngine 等）作为模块级单例在 `EditorManager.ts` 中创建，保证只实例化一次。
+
+- **`init(container, staticCanvas, selectionCanvas, initialMarkdown, callbacks)`**：一次调用完成所有初始化
+  - 解析初始 Markdown 内容
+  - 注入 dispatcher 回调
+  - 创建 InputManager
+  - 注册 pointer/wheel/resize/keydown 事件（原生方式）
+  - 执行首次布局和渲染
+  - 返回 cleanup 函数
+
+- **React 状态回调**：通过 `callbacks` 参数注入 `onRawMarkdownChange` 和 `onScrollStateChange`，供 Markdown 源码面板和滚动条同步状态
 
 ### EventDispatcher
 
-`EventDispatcher` 是编辑器的集中状态管理和事件派发中心，解耦 UI 组件与核心逻辑：
+`EventDispatcher` 是编辑器的事件中心和状态管理器：
 
-- **集中管理 `EditorState`**：`cursor`、`selection`、`compositionText`、`isDragging` 等编辑器核心状态
-- **事件派发**：提供 `subscribe` 机制，UI 层订阅 `cursorChanged`、`selectionChanged`、`dataChanged` 等事件驱动重渲染
-- **交互入口**：`handlePointerDown` / `handlePointerMove` / `handlePointerUp` 将浏览器指针事件转换为编辑器状态更新
-- **键盘委托**：`handleKeyDown` 委托 `KeyboardHandler` 处理并返回 `KeyboardAction`，由上层执行后续操作
+- **集中管理 `EditorState`**：`cursor`、`selection`、`compositionText`、`isDragging`、`scrollY`
+- **统一事件入口**：`handleTextInput`、`handleKeyDown`、`handlePointerDown/Move/Up`、`handleWheel` 等
+- **渲染通知**：通过 `onRender` 发出三种渲染请求：
+  - `selectionOnly`：仅重绘光标/选区层
+  - `full`：重绘两层 Canvas + 同步 Markdown + 更新滚动条
+  - `scroll`：滚动位置变化
+- **内部协调**：自动调用 BlockStore 修改数据、LayoutEngine 重排布局、MarkdownShortcuts 检查快捷键
 
 ```mermaid
-flowchart LR
-  PointerEvent["指针事件"] --> ED["EventDispatcher"]
-  KeyboardEvent["键盘事件"] --> ED
-  ED --> |"hitTest"| HT["HitTester"]
-  ED --> |"键盘处理"| KH["KeyboardHandler"]
-  ED --> |"坐标转换"| CT["CoordTransformer"]
-  ED --> |"状态变更"| Listeners["UI 订阅者"]
+flowchart TD
+  Click["用户点击 Canvas"] --> EM["EditorManager"]
+  EM -->|"pointer 事件"| ED["EventDispatcher"]
+  InputMgr["InputManager textarea"] -->|"input/IME/clipboard"| ED
+  WindowKey["window keydown"] -->|"via EditorManager"| ED
+  Wheel["鼠标滚轮"] -->|"via EditorManager"| ED
+  ED -->|"hitTest"| HT["HitTester"]
+  ED -->|"键盘处理"| KH["KeyboardHandler"]
+  ED -->|"数据修改"| BS["BlockStore"]
+  ED -->|"重排布局"| LE["LayoutEngine"]
+  ED -->|"渲染通知"| EM
+  EM -->|"React 状态回调"| App["App.tsx"]
 ```
 
 ### CoordTransformer
