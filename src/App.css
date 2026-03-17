@@ -1,0 +1,121 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #f8fafc;
+  font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+}
+
+.app-layout {
+  display: flex;
+  width: 100%;
+  height: 100%;
+}
+
+.editor-wrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  height: 100%;
+  background: #f1f5f9;
+  border-right: 1px solid #e2e8f0;
+  overflow: hidden;
+}
+
+.editor-container {
+  position: relative;
+  width: 100%;
+  max-width: 800px;
+  height: 100%;
+  background: #ffffff;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
+}
+
+.editor-canvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.static-canvas {
+  z-index: 1;
+}
+
+.selection-canvas {
+  z-index: 2;
+  cursor: text;
+}
+
+.scrollbar-track {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 10px;
+  height: 100%;
+  z-index: 10;
+  background: #eee;
+  border-left: 1px solid #ddd;
+}
+
+.scrollbar-thumb {
+  position: absolute;
+  right: 1px;
+  width: 8px;
+  min-height: 30px;
+  background: #bbb;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.scrollbar-thumb:hover,
+.scrollbar-thumb.active {
+  background: #888;
+}
+
+.raw-editor-container {
+  width: 400px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #1e293b;
+}
+
+.raw-editor-header {
+  padding: 8px 12px;
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid #334155;
+  background: #0f172a;
+}
+
+.raw-editor {
+  flex: 1;
+  width: 100%;
+  padding: 12px;
+  background: #1e293b;
+  color: #e2e8f0;
+  border: none;
+  outline: none;
+  resize: none;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.raw-editor::selection {
+  background: #334155;
+}
