@@ -20,11 +20,16 @@ export class InputManager {
   constructor(container: HTMLElement) {
     this.textarea = document.createElement('textarea');
     /* 使用 opacity:0 + 1px 尺寸隐藏，而非 display:none，否则无法获得焦点和输入事件 */
+    /**
+     * textarea 使用 opacity:0 隐藏但保持可 focus/可输入。
+     * 宽度 200px 避免组合输入时浏览器内部滚动导致 IME 候选窗跳动。
+     * clip-path 裁切到 1x1 像素防止意外可见区域。
+     */
     Object.assign(this.textarea.style, {
       position: 'absolute',
       top: '0',
       left: '0',
-      width: '1px',
+      width: '200px',
       height: '1px',
       opacity: '0',
       border: 'none',
@@ -38,6 +43,8 @@ export class InputManager {
       background: 'transparent',
       pointerEvents: 'none',
       fontSize: '16px',
+      lineHeight: '1',
+      clipPath: 'inset(0 0 0 0)',
     });
     /* 禁用浏览器自动补全、拼写检查等行为，避免干扰输入 */
     this.textarea.setAttribute('autocomplete', 'off');
@@ -65,6 +72,15 @@ export class InputManager {
     this.textarea.style.pointerEvents = 'auto';
     this.textarea.focus({ preventScroll: true });
     this.textarea.style.pointerEvents = 'none';
+  }
+
+  /** 移动 textarea 到指定位置（容器内坐标），高度和行高匹配当前行，使 IME 紧贴内容 */
+  updatePosition(x: number, y: number, height: number) {
+    this.textarea.style.left = `${x}px`;
+    this.textarea.style.top = `${y}px`;
+    this.textarea.style.height = `${height}px`;
+    this.textarea.style.lineHeight = `${height}px`;
+    this.textarea.style.fontSize = `${height}px`;
   }
 
   blur() {
@@ -98,10 +114,12 @@ export class InputManager {
   private onCompositionStart = () => {
     this.isComposing = true;
     this.handler?.onCompositionStart();
+    this.preventContainerScroll();
   };
 
   private onCompositionUpdate = (e: CompositionEvent) => {
     this.handler?.onCompositionUpdate(e.data);
+    this.preventContainerScroll();
   };
 
   /** 组合结束时提交最终文本并清空 textarea */
@@ -109,7 +127,19 @@ export class InputManager {
     this.isComposing = false;
     this.textarea.value = '';
     this.handler?.onCompositionEnd(e.data);
+    this.preventContainerScroll();
   };
+
+  /** 防止 textarea 内容溢出导致容器或自身发生滚动偏移 */
+  private preventContainerScroll() {
+    this.textarea.scrollLeft = 0;
+    this.textarea.scrollTop = 0;
+    const container = this.textarea.parentElement;
+    if (container) {
+      container.scrollLeft = 0;
+      container.scrollTop = 0;
+    }
+  }
 
   private onCopy = (e: ClipboardEvent) => {
     this.handler?.onCopy(e);

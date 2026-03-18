@@ -9,6 +9,8 @@ import { HitTester } from '../core/HitTester';
 import { EventDispatcher } from '../core/EventDispatcher';
 import { InputManager } from '../core/InputManager';
 import { blocksToMarkdown } from '../core/BlockSerializer';
+import { parseInlineMarkdown } from '../core/InlineParser';
+import type { CursorPosition } from '../core/types';
 
 // ─── 核心模块单例（模块作用域创建，保证只实例化一次） ───
 
@@ -48,6 +50,7 @@ export class EditorManager {
   private inputManager: InputManager | null = null;
   private callbacks: EditorCallbacks | null = null;
   private isUpdatingFromRaw = false;
+  private compositionActive = false;
 
   /**
    * 初始化编辑器：解析初始内容、注入 DOM、注册事件、首次渲染。
@@ -99,6 +102,8 @@ export class EditorManager {
 
     // 订阅渲染通知
     const unsubRender = dispatcher.onRender((req) => {
+      const cleanup = this.applyCompositionForRendering();
+
       switch (req.type) {
         case 'selectionOnly':
           this.renderSelection();
@@ -106,7 +111,6 @@ export class EditorManager {
         case 'full':
           this.renderStatic();
           this.renderSelection();
-          this.syncReactState();
           break;
         case 'scroll':
           this.callbacks?.onScrollStateChange({
@@ -117,6 +121,15 @@ export class EditorManager {
           this.renderStatic();
           this.renderSelection();
           break;
+      }
+
+      cleanup();
+
+      if (req.type === 'full') {
+        this.syncReactState();
+        this.updateTextareaPosition();
+      } else if (req.type === 'scroll') {
+        this.updateTextareaPosition();
       }
     });
 
@@ -138,7 +151,11 @@ export class EditorManager {
       });
     });
 
-    selectionRenderer.startBlink(() => this.renderSelection());
+    selectionRenderer.startBlink(() => {
+      const cleanup = this.applyCompositionForRendering();
+      this.renderSelection();
+      cleanup();
+    });
 
     // 全局事件
     const handleResize = () => {
@@ -179,6 +196,7 @@ export class EditorManager {
     const { scrollY } = dispatcher.getState();
     dispatcher.handlePointerDown(e.clientX - rect.left, e.clientY - rect.top + scrollY);
     this.selectionCanvas!.setPointerCapture(e.pointerId);
+    this.updateTextareaPosition();
   };
 
   private onPointerMove = (e: PointerEvent) => {
@@ -242,7 +260,17 @@ export class EditorManager {
     const ctx = this.selectionCanvas.getContext('2d');
     if (!ctx) return;
     const { cursor, selection, compositionText, scrollY } = dispatcher.getState();
-    selectionRenderer.render(ctx, blockStore.getBlocks(), cursor, selection, window.devicePixelRatio, compositionText || undefined, scrollY);
+
+    if (this.compositionActive && compositionText && cursor) {
+      const adjustedCursor: CursorPosition = {
+        blockId: cursor.blockId,
+        offset: cursor.offset + compositionText.length,
+      };
+      selectionRenderer.render(ctx, blockStore.getBlocks(), adjustedCursor, null, window.devicePixelRatio, scrollY);
+      selectionRenderer.renderCompositionUnderline(ctx, blockStore.getBlocks(), cursor, compositionText.length, window.devicePixelRatio, scrollY);
+    } else {
+      selectionRenderer.render(ctx, blockStore.getBlocks(), cursor, selection, window.devicePixelRatio, scrollY);
+    }
   }
 
   private getContentHeight(): number {
@@ -261,6 +289,67 @@ export class EditorManager {
       contentHeight: this.getContentHeight(),
       viewportHeight: this.container?.clientHeight ?? 600,
     });
+  }
+
+  /**
+   * 组合输入期间临时将 compositionText 注入 block 的 rawText，
+   * 重新解析和布局以获得正确的换行和文字位移效果。
+   * 返回的 cleanup 函数恢复原始状态。
+   */
+  private applyCompositionForRendering(): () => void {
+    const { compositionText, cursor } = dispatcher.getState();
+    if (!compositionText || !cursor) return () => {};
+
+    const block = blockStore.getBlock(cursor.blockId);
+    if (!block) return () => {};
+
+    const savedRawText = block.rawText;
+    const savedInlines = block.inlines;
+    const savedSTV = block.sourceToVisual;
+    const savedVTS = block.visualToSource;
+
+    const blocks = blockStore.getBlocks();
+    const blockIdx = blocks.indexOf(block);
+    if (blockIdx < 0) return () => {};
+
+    const savedLayouts = blocks.slice(blockIdx).map(b => b.layout);
+
+    block.rawText = savedRawText.substring(0, cursor.offset) + compositionText + savedRawText.substring(cursor.offset);
+    const parseResult = parseInlineMarkdown(block.rawText);
+    block.inlines = parseResult.segments;
+    block.sourceToVisual = parseResult.sourceToVisual;
+    block.visualToSource = parseResult.visualToSource;
+
+    layoutEngine.reflowFrom([...blocks], Math.max(0, blockIdx), this.getContainerSize().width);
+
+    this.compositionActive = true;
+
+    return () => {
+      block.rawText = savedRawText;
+      block.inlines = savedInlines;
+      block.sourceToVisual = savedSTV;
+      block.visualToSource = savedVTS;
+
+      for (let i = 0; i < savedLayouts.length; i++) {
+        blocks[blockIdx + i].layout = savedLayouts[i];
+      }
+
+      this.compositionActive = false;
+    };
+  }
+
+  /**
+   * 将隐藏 textarea 移动到光标像素位置，使 IME 候选窗紧贴光标所在行。
+   * 组合输入期间跳过更新，避免候选窗跳动。
+   */
+  private updateTextareaPosition() {
+    if (this.inputManager?.composing) return;
+    const { cursor, scrollY } = dispatcher.getState();
+    if (!cursor) return;
+    const pos = selectionRenderer.getCursorPixelPosition(blockStore.getBlocks(), cursor);
+    if (pos) {
+      this.inputManager?.updatePosition(pos.x, pos.y - scrollY, pos.height);
+    }
   }
 }
 

@@ -49,7 +49,6 @@ export class SelectionCanvasRenderer {
     cursor: CursorPosition | null,
     selection: SelectionRange | null,
     dpr: number,
-    compositionText?: string,
     scrollY: number = 0,
   ) {
     ctx.save();
@@ -63,10 +62,6 @@ export class SelectionCanvasRenderer {
 
     if (cursor && this.cursorVisible) {
       this.renderCursor(ctx, blocks, cursor);
-    }
-
-    if (compositionText && cursor) {
-      this.renderCompositionText(ctx, blocks, cursor, compositionText);
     }
 
     ctx.restore();
@@ -84,33 +79,63 @@ export class SelectionCanvasRenderer {
     ctx.fillRect(pos.x, pos.y, 2, pos.height);
   }
 
-  /** IME 输入临时文本 + 虚线下划线 */
-  private renderCompositionText(
+  /**
+   * 在组合文本范围内绘制虚线下划线（跨行支持）。
+   * startCursor 为组合起始位置（source 空间），compositionLength 为组合文本在 source 空间的长度。
+   * 调用前需确保 block 的 inlines/layout/sourceToVisual 已包含组合文本。
+   */
+  renderCompositionUnderline(
     ctx: CanvasRenderingContext2D,
     blocks: readonly Block[],
-    cursor: CursorPosition,
-    text: string,
+    startCursor: CursorPosition,
+    compositionLength: number,
+    dpr: number,
+    scrollY: number,
   ) {
-    const pos = this.getCursorPixelPosition(blocks, cursor);
-    if (!pos) return;
+    ctx.save();
+    ctx.scale(dpr, dpr);
+    ctx.translate(0, -scrollY);
 
-    const block = blocks.find(b => b.id === cursor.blockId);
-    if (!block) return;
+    const block = blocks.find(b => b.id === startCursor.blockId);
+    if (!block?.layout) { ctx.restore(); return; }
 
-    const font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false });
-    ctx.font = font;
-    ctx.fillStyle = '#000';
-    ctx.fillText(text, pos.x, pos.y + pos.height * 0.8);
+    const startVisual = this.blockStore.sourceToVisual(block, startCursor.offset);
+    const endVisual = this.blockStore.sourceToVisual(block, startCursor.offset + compositionLength);
 
-    const textWidth = ctx.measureText(text).width;
     ctx.setLineDash([2, 2]);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pos.x, pos.y + pos.height - 2);
-    ctx.lineTo(pos.x + textWidth, pos.y + pos.height - 2);
-    ctx.stroke();
+
+    let charCount = 0;
+    for (const line of block.layout.lines) {
+      if (line.newlineBefore) charCount++;
+      for (const seg of line.segments) {
+        const segStart = charCount;
+        const segEnd = charCount + seg.text.length;
+
+        const overlapStart = Math.max(startVisual, segStart);
+        const overlapEnd = Math.min(endVisual, segEnd);
+
+        if (overlapStart < overlapEnd) {
+          const xStart = seg.x + this.textMeasurer.measureWidth(
+            seg.text.substring(0, overlapStart - segStart), block.type, seg.style,
+          );
+          const xEnd = seg.x + this.textMeasurer.measureWidth(
+            seg.text.substring(0, overlapEnd - segStart), block.type, seg.style,
+          );
+
+          ctx.beginPath();
+          ctx.moveTo(xStart, line.y + line.height - 2);
+          ctx.lineTo(xEnd, line.y + line.height - 2);
+          ctx.stroke();
+        }
+
+        charCount = segEnd;
+      }
+    }
+
     ctx.setLineDash([]);
+    ctx.restore();
   }
 
   /**

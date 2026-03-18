@@ -146,7 +146,8 @@ export class EventDispatcher {
 
   handleCompositionUpdate(text: string) {
     this.state.compositionText = text;
-    this.emit({ type: 'selectionOnly' });
+    this.resetBlink();
+    this.emit({ type: 'full' });
   }
 
   /** 组合结束：提交最终文本，流程与 handleTextInput 相同 */

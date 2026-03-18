@@ -159,7 +159,7 @@ flowchart LR
 ```
 
 - **StaticCanvas**：渲染文档内容（标题、段落、列表、代码块等），仅在数据变化时重绘
-- **SelectionCanvas**：渲染光标（530ms 闪烁）、选区高亮、IME 组合文本（带虚线下划线），高频更新不影响内容层
+- **SelectionCanvas**：渲染光标（530ms 闪烁）、选区高亮、IME 组合文本下划线，高频更新不影响内容层
 
 ### 渲染流程
 
@@ -228,7 +228,7 @@ flowchart TD
   Reflow --> Render["Canvas 重绘"]
 
   IME["IME 组合输入"] --> CompStart["compositionstart"]
-  CompStart --> CompUpdate["compositionupdate<br/>Canvas 渲染临时文本"]
+  CompStart --> CompUpdate["compositionupdate<br/>临时注入 block 重新布局渲染"]
   CompUpdate --> CompEnd["compositionend<br/>提交最终文本"]
   CompEnd --> InsertText
 
@@ -338,6 +338,7 @@ flowchart TD
 | 文本测量缓存 | `TextMeasurer` 缓存相同 font+text 的测量结果 |
 | DPR 处理 | `ctx.scale(dpr, dpr)` 保证高分屏清晰 |
 | 偏移映射数组 | `sourceToVisual[]` / `visualToSource[]` O(1) 坐标转换 |
+| IME 虚拟注入 | 组合输入期间临时注入文本参与布局，渲染后恢复，实现正确换行 |
 
 ## 技术栈
 
