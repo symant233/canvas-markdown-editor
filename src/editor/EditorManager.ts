@@ -6,7 +6,7 @@ import { StaticCanvasRenderer } from '../core/StaticCanvasRenderer';
 import { SelectionCanvasRenderer } from '../core/SelectionCanvasRenderer';
 import { KeyboardHandler } from '../core/KeyboardHandler';
 import { HitTester } from '../core/HitTester';
-import { EventDispatcher } from '../core/EventDispatcher';
+import { EventDispatcher, type RenderRequest } from '../core/EventDispatcher';
 import { InputManager } from '../core/InputManager';
 import { blocksToMarkdown } from '../core/BlockSerializer';
 import { parseInlineMarkdown } from '../core/InlineParser';
@@ -101,7 +101,7 @@ export class EditorManager {
     });
 
     // 订阅渲染通知
-    const unsubRender = dispatcher.onRender((req) => {
+    const unsubRender = dispatcher.onRender((req: RenderRequest) => {
       const cleanup = this.applyCompositionForRendering();
 
       switch (req.type) {
@@ -140,7 +140,7 @@ export class EditorManager {
 
     // 首次渲染
     this.setCanvasDimensions();
-    layoutEngine.computeLayout([...blockStore.getBlocks()], this.getContainerSize().width);
+    layoutEngine.computeLayout(blockStore.getBlocks(), this.getContainerSize().width);
     this.renderStatic();
     this.renderSelection();
     requestAnimationFrame(() => {
@@ -330,7 +330,7 @@ export class EditorManager {
     block.sourceToVisual = parseResult.sourceToVisual;
     block.visualToSource = parseResult.visualToSource;
 
-    layoutEngine.reflowFrom([...blocks], Math.max(0, blockIdx), this.getContainerSize().width);
+    layoutEngine.reflowFrom(blocks, Math.max(0, blockIdx), this.getContainerSize().width);
 
     this.compositionActive = true;
 

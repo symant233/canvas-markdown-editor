@@ -23,7 +23,7 @@ export class LayoutEngine {
   }
 
   /** 全量计算所有块的布局，从顶部开始依次堆叠 */
-  computeLayout(blocks: Block[], containerWidth: number) {
+  computeLayout(blocks: readonly Block[], containerWidth: number) {
     let y = PADDING_TOP;
     const contentWidth = containerWidth - PADDING_LEFT * 2;
 
@@ -36,7 +36,7 @@ export class LayoutEngine {
   }
 
   /** 增量重排：仅从 startIndex 开始重新计算，后续块位置依次更新（编辑优化核心） */
-  reflowFrom(blocks: Block[], startIndex: number, containerWidth: number) {
+  reflowFrom(blocks: readonly Block[], startIndex: number, containerWidth: number) {
     if (startIndex < 0 || startIndex >= blocks.length) return;
 
     const contentWidth = containerWidth - PADDING_LEFT * 2;
@@ -58,7 +58,7 @@ export class LayoutEngine {
   }
 
   /** 代码块/引用/分割线与相邻块之间增加额外间距（8px），普通块间无额外间距 */
-  private getTopMargin(blocks: Block[], index: number): number {
+  private getTopMargin(blocks: readonly Block[], index: number): number {
     if (index === 0) return 0;
     const block = blocks[index];
     const prev = blocks[index - 1];

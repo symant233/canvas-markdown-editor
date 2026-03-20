@@ -360,7 +360,7 @@ export class KeyboardHandler {
 
       block.rawText = block.rawText + next.rawText;
       this.blockStore.reparseBlock(block);
-      const newBlocks = [...this.blockStore.getBlocks()].filter(b => b.id !== next.id);
+      const newBlocks = this.blockStore.getBlocks().filter(b => b.id !== next.id);
       this.blockStore.setBlocks(newBlocks);
       return { type: 'dataChanged', cursor };
     }

@@ -343,7 +343,7 @@ export class EventDispatcher {
     const sel = this.state.selection;
     if (!sel) return;
 
-    const blocks = [...this.blockStore.getBlocks()];
+    const blocks = this.blockStore.getBlocks();
     const anchorIdx = blocks.findIndex(b => b.id === sel.anchor.blockId);
     const focusIdx = blocks.findIndex(b => b.id === sel.focus.blockId);
 
@@ -385,13 +385,13 @@ export class EventDispatcher {
   private reflowFrom(blockId: string) {
     const width = this.getContainerWidth();
     const idx = this.blockStore.getBlockIndex(blockId);
-    this.layoutEngine.reflowFrom([...this.blockStore.getBlocks()], Math.max(0, idx), width);
+    this.layoutEngine.reflowFrom(this.blockStore.getBlocks(), Math.max(0, idx), width);
   }
 
   /** 全量重排所有块 */
   private fullLayout() {
     const width = this.getContainerWidth();
-    this.layoutEngine.computeLayout([...this.blockStore.getBlocks()], width);
+    this.layoutEngine.computeLayout(this.blockStore.getBlocks(), width);
   }
 
   /** 获取块的视觉文本（不含标记符） */
