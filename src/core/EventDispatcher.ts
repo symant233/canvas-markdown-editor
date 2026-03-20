@@ -26,7 +26,7 @@ export interface EditorState {
 export type RenderRequest =
   | { type: 'selectionOnly' }
   | { type: 'full' }
-  | { type: 'scroll' };
+  | { type: 'scroll'; oldScrollY: number };
 
 type RenderHandler = (request: RenderRequest) => void;
 
@@ -291,15 +291,17 @@ export class EventDispatcher {
 
   handleWheel(deltaY: number) {
     const maxScroll = this.getMaxScroll();
-    const newScrollY = Math.max(0, Math.min(maxScroll, this.state.scrollY + deltaY));
-    if (newScrollY === this.state.scrollY) return;
+    const oldScrollY = this.state.scrollY;
+    const newScrollY = Math.max(0, Math.min(maxScroll, oldScrollY + deltaY));
+    if (newScrollY === oldScrollY) return;
     this.state.scrollY = newScrollY;
-    this.emit({ type: 'scroll' });
+    this.emit({ type: 'scroll', oldScrollY });
   }
 
   handleScrollbarScroll(newScrollY: number) {
+    const oldScrollY = this.state.scrollY;
     this.state.scrollY = newScrollY;
-    this.emit({ type: 'scroll' });
+    this.emit({ type: 'scroll', oldScrollY });
   }
 
   // ─── 调试面板 ───

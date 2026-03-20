@@ -89,6 +89,7 @@ src/
 │   ├── KeyboardHandler.ts           # 键盘事件处理
 │   ├── HitTester.ts                 # 点击位置 -> 光标定位
 │   ├── CoordTransformer.ts          # 坐标系转换
+│   ├── ScrollHelper.ts              # 滚动截屏几何拆分算法
 │   └── EventDispatcher.ts           # 事件派发与状态管理
 ```
 
@@ -335,10 +336,47 @@ flowchart TD
 |------|------|
 | 双层 Canvas | 内容与交互分离，光标闪烁不重绘内容 |
 | 增量 reflow | 仅从修改点开始重算布局 |
+| **滚动截屏贴图** | 滚动时复用已绘制像素（blit），仅补画新露出条带，大幅减少渲染开销 |
 | 文本测量缓存 | `TextMeasurer` 缓存相同 font+text 的测量结果 |
 | DPR 处理 | `ctx.scale(dpr, dpr)` 保证高分屏清晰 |
 | 偏移映射数组 | `sourceToVisual[]` / `visualToSource[]` O(1) 坐标转换 |
 | IME 虚拟注入 | 组合输入期间临时注入文本参与布局，渲染后恢复，实现正确换行 |
+
+### 滚动截屏贴图优化
+
+滚动时不再全量重绘可视区，而是通过 `drawImage` 复用上一帧已绘制的像素，仅对新露出的条带执行 collect + render。
+
+**核心流程：**
+
+```
+用户滚轮 → EventDispatcher.handleWheel(deltaY)
+  → emit({ type: 'scroll', oldScrollY })
+  → EditorManager.renderStaticScroll(oldScrollY)
+    → StaticCanvasRenderer.renderScroll(ctx, blocks, vpH, dpr, oldScrollY, newScrollY)
+      1. ScrollHelper.computeVerticalScrollBlit(old, new, vpH)
+         → { blit: { srcY, dstY, height }, stripY, stripHeight }
+      2. ctx.drawImage(canvas, srcRect, dstRect)  ← 像素搬运（'copy' 混合模式）
+      3. clip(strip) → clearRect → translate(-newScrollY) → 仅绘制条带内的 block
+```
+
+**几何示意（向下滚动 deltaY）：**
+
+```
+   旧视口:  [oldScrollY ─────────── oldScrollY + vpH]
+   新视口:       [newScrollY ─────────── newScrollY + vpH]
+                 ↑ 交集区域可 blit 复用 ↑    ↑ 新条带需补画 ↑
+```
+
+**降级策略：**
+- 滚动距离超过视口高度时自动退化为全量重绘
+- 可通过 `staticRenderer.setScrollBlitEnabled(false)` 关闭该优化
+- Selection 层（光标/选区）始终全量重绘（绘制极轻量，不值得优化）
+
+**相关文件：**
+- `src/core/ScrollHelper.ts` — 几何拆分算法（计算可复用区域与补画条带）
+- `src/core/StaticCanvasRenderer.ts` — `renderScroll()` 方法实现 blit + 条带补画
+- `src/core/EventDispatcher.ts` — scroll 事件携带 `oldScrollY`
+- `src/editor/EditorManager.ts` — `renderStaticScroll()` 调度入口
 
 ## 技术栈
 

@@ -118,7 +118,7 @@ export class EditorManager {
             contentHeight: this.getContentHeight(),
             viewportHeight: container.clientHeight,
           });
-          this.renderStatic();
+          this.renderStaticScroll(req.oldScrollY);
           this.renderSelection();
           break;
       }
@@ -253,6 +253,16 @@ export class EditorManager {
     const { height } = this.getContainerSize();
     const { scrollY } = dispatcher.getState();
     staticRenderer.render(ctx, blockStore.getBlocks(), 0, height, window.devicePixelRatio, scrollY);
+  }
+
+  /** 滚动专用渲染：blit 复用像素 + 补画新露出条带 */
+  private renderStaticScroll(oldScrollY: number) {
+    if (!this.staticCanvas) return;
+    const ctx = this.staticCanvas.getContext('2d');
+    if (!ctx) return;
+    const { height } = this.getContainerSize();
+    const { scrollY } = dispatcher.getState();
+    staticRenderer.renderScroll(ctx, blockStore.getBlocks(), height, window.devicePixelRatio, oldScrollY, scrollY);
   }
 
   private renderSelection() {

@@ -1,5 +1,6 @@
 import type { Block, InlineStyle } from './types';
 import { TextMeasurer } from './TextMeasurer';
+import { computeVerticalScrollBlit } from './ScrollHelper';
 
 const HEADING_BOTTOM_BORDER: Record<string, boolean> = {
   'heading-1': true,
@@ -15,8 +16,15 @@ const CODE_BLOCK_RADIUS = 6;
 /** 静态内容渲染器，负责绘制文档内容（标题、段落、列表等） */
 export class StaticCanvasRenderer {
   private textMeasurer: TextMeasurer;
+  private _enableScrollBlit = true;
+
   constructor(textMeasurer: TextMeasurer) {
     this.textMeasurer = textMeasurer;
+  }
+
+  /** 启用/禁用滚动截屏优化（禁用后滚动退化为全量重绘） */
+  setScrollBlitEnabled(enabled: boolean) {
+    this._enableScrollBlit = enabled;
   }
 
   /**
@@ -51,6 +59,88 @@ export class StaticCanvasRenderer {
 
       const { y, height } = block.layout;
       if (y + height < viewportTop + scrollY || y > viewportBottom + scrollY) continue; // 视口裁剪：仅绘制可视区域内的块
+
+      this.renderBlock(ctx, block, orderedListCounter);
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * 滚动渲染：先 blit 可复用像素，再只补画新露出条带。
+   * oldScrollY/newScrollY 差值小于视口高度时走 blit 路径，否则退化为全量重绘。
+   */
+  renderScroll(
+    ctx: CanvasRenderingContext2D,
+    blocks: readonly Block[],
+    viewportHeight: number,
+    dpr: number,
+    oldScrollY: number,
+    newScrollY: number,
+  ) {
+    if (!this._enableScrollBlit) {
+      this.render(ctx, blocks, 0, viewportHeight, dpr, newScrollY);
+      return;
+    }
+
+    const result = computeVerticalScrollBlit(oldScrollY, newScrollY, viewportHeight);
+
+    if (!result.blit) {
+      this.render(ctx, blocks, 0, viewportHeight, dpr, newScrollY);
+      return;
+    }
+
+    const canvas = ctx.canvas;
+    const { srcY, dstY, height } = result.blit;
+
+    // Step 1: blit — 取整设备像素坐标，防止子像素插值导致累积模糊
+    const srcPxY = Math.round(srcY * dpr);
+    const dstPxY = Math.round(dstY * dpr);
+    const heightPx = Math.round(height * dpr);
+
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'copy';
+    ctx.drawImage(
+      canvas,
+      0, srcPxY, canvas.width, heightPx,
+      0, dstPxY, canvas.width, heightPx,
+    );
+    ctx.restore();
+
+    // Step 2: clip + 清空 + 补画新露出的条带
+    // 条带向两侧各扩展 1px 覆盖取整间隙
+    const logicalWidth = canvas.width / dpr;
+    const safeStripY = Math.max(0, result.stripY - 1);
+    const safeStripEnd = Math.min(viewportHeight, result.stripY + result.stripHeight + 1);
+    const safeStripHeight = safeStripEnd - safeStripY;
+
+    ctx.save();
+    ctx.scale(dpr, dpr);
+
+    ctx.beginPath();
+    ctx.rect(0, safeStripY, logicalWidth, safeStripHeight);
+    ctx.clip();
+    ctx.clearRect(0, safeStripY, logicalWidth, safeStripHeight);
+
+    ctx.translate(0, -newScrollY);
+
+    const stripSceneTop = newScrollY + safeStripY;
+    const stripSceneBottom = stripSceneTop + safeStripHeight;
+
+    let orderedListCounter = 0;
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      if (!block.layout) continue;
+
+      if (block.type === 'ordered-list') {
+        orderedListCounter++;
+      } else {
+        orderedListCounter = 0;
+      }
+
+      const { y, height: bh } = block.layout;
+      if (y + bh < stripSceneTop || y > stripSceneBottom) continue;
 
       this.renderBlock(ctx, block, orderedListCounter);
     }
