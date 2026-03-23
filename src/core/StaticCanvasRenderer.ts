@@ -255,6 +255,7 @@ export class StaticCanvasRenderer {
   }
 
   private getTextColor(blockType: string, style: InlineStyle): string {
+    if (style.color) return style.color;
     if (style.link) return '#2563eb';
     if (blockType === 'blockquote') return '#6b7280';
     if (blockType === 'code-block') return '#1f2937';

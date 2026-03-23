@@ -153,7 +153,10 @@ export class SelectionCanvasRenderer {
 
     let charCount = 0;
     for (const line of block.layout.lines) {
-      if (line.newlineBefore) charCount++; // 补偿 \n 占位
+      if (line.newlineBefore) charCount++;
+      if (line.segments.length === 0 && visualOffset <= charCount) {
+        return { x: block.layout.x, y: line.y, height: line.height };
+      }
       for (const seg of line.segments) {
         const segEnd = charCount + seg.text.length;
         if (visualOffset <= segEnd) {

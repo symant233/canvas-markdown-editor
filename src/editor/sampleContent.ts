@@ -17,7 +17,7 @@ export const SAMPLE_MARKDOWN = `# Canvas Markdown 编辑器
 2. 有序列表项 2
 3. 有序列表项 3
 
-\`\`\`
+\`\`\`js
 function hello() {
   console.log("Hello, World!");
   return 42;

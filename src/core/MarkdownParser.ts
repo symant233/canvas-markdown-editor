@@ -1,6 +1,7 @@
 import type { Block, BlockType } from './types';
 import { DEFAULT_INLINE_STYLE, createBlock } from './types';
 import { parseInlineMarkdown } from './InlineParser';
+import { highlightCode } from './SyntaxHighlighter';
 
 export class MarkdownParser {
   /** 将 Markdown 字符串按行解析为 Block 数组 */
@@ -13,7 +14,7 @@ export class MarkdownParser {
       const line = lines[i];
 
       if (line.startsWith('```')) {
-        /* 代码块：``` 开头直到下一个 ``` 之间的行合并为 rawText，不做内联解析 */
+        const language = line.substring(3).trim() || undefined;
         const codeLines: string[] = [];
         i++;
         while (i < lines.length && !lines[i].startsWith('```')) {
@@ -21,7 +22,10 @@ export class MarkdownParser {
           i++;
         }
         if (i < lines.length) i++;
-        blocks.push(this.createBlockSimple('code-block', codeLines.join('\n')));
+        const code = codeLines.join('\n');
+        const block = createBlock('code-block', code, highlightCode(code, language));
+        block.language = language;
+        blocks.push(block);
       } else if (line === '---' || line === '***' || line === '___') {
         blocks.push(this.createBlockSimple('hr', ''));
         i++;

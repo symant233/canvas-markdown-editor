@@ -17,6 +17,7 @@ export interface InlineStyle {
   code: boolean;
   strikethrough: boolean;
   link?: string;
+  color?: string;
 }
 
 /** 解析后的文本片段：携带文本内容及样式，用于渲染 */
@@ -60,6 +61,8 @@ export interface Block {
   /** sourceToVisual[i]：rawText 第 i 位 → 视觉偏移。visualToSource[i]：视觉第 i 位 → rawText 偏移。用于光标/选区映射 */
   sourceToVisual: number[];
   visualToSource: number[];
+  /** 代码块的编程语言（从 ```lang 标记中提取） */
+  language?: string;
 }
 
 /** 光标/选区均在 source 空间（即 rawText 的字符偏移），与 Markdown 标记符一致 */

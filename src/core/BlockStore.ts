@@ -1,6 +1,7 @@
 import type { Block, CursorPosition } from './types';
 import { createBlock, DEFAULT_INLINE_STYLE } from './types';
 import { parseInlineMarkdown } from './InlineParser';
+import { highlightCode } from './SyntaxHighlighter';
 
 type Listener = () => void;
 
@@ -146,8 +147,14 @@ export class BlockStore {
     return { blockId: newBlock.id, offset: 0 };
   }
 
-  /** 调用 InlineParser 重新解析内联样式和偏移映射 */
+  /** 重新解析块的内联数据：代码块走语法高亮，其他块走 InlineParser */
   reparseBlock(block: Block) {
+    if (block.type === 'code-block') {
+      block.inlines = highlightCode(block.rawText, block.language);
+      block.sourceToVisual = [];
+      block.visualToSource = [];
+      return;
+    }
     const result = parseInlineMarkdown(block.rawText);
     block.inlines = result.segments;
     block.sourceToVisual = result.sourceToVisual;
