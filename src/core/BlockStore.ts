@@ -98,8 +98,9 @@ export class BlockStore {
 
   /**
    * 拆分块逻辑：
-   * - code-block 特殊处理：回车插入 \n 而非拆分块；末尾连续两次回车退出代码块
-   * - continuableTypes：列表/引用在回车时自动续行同类型；空列表项回车退出为段落
+   * - multilineTypes（code-block / blockquote）：回车插入 \n 而非拆分块；末尾连续两次回车退出
+   * - 块首（offset=0）：在上方插入空块，列表/引用继承同类型，其他为 paragraph
+   * - continuableTypes（无序列表/有序列表）：回车自动续行同类型；空列表项回车退出为段落
    */
   splitBlock(cursor: CursorPosition): CursorPosition {
     const block = this.getBlock(cursor.blockId);
@@ -109,7 +110,8 @@ export class BlockStore {
     const beforeRaw = block.rawText.substring(0, cursor.offset);
     const afterRaw = block.rawText.substring(cursor.offset);
 
-    if (block.type === 'code-block') {
+    const multilineTypes = new Set(['code-block', 'blockquote']);
+    if (multilineTypes.has(block.type)) {
       if (beforeRaw.endsWith('\n') && afterRaw.length === 0) {
         block.rawText = beforeRaw.slice(0, -1);
         this.reparseBlock(block);
@@ -126,11 +128,19 @@ export class BlockStore {
       return { blockId: block.id, offset: cursor.offset + 1 };
     }
 
-    const continuableTypes = new Set(['bullet-list', 'ordered-list', 'blockquote']);
+    const continuableTypes = new Set(['bullet-list', 'ordered-list']);
     const continueType = continuableTypes.has(block.type) ? block.type : 'paragraph';
 
     if (continuableTypes.has(block.type) && beforeRaw.length === 0 && afterRaw.length === 0) {
       block.type = 'paragraph';
+      this.notify();
+      return { blockId: block.id, offset: 0 };
+    }
+
+    if (cursor.offset === 0) {
+      const emptyType = continuableTypes.has(block.type) ? block.type : 'paragraph';
+      const emptyBlock = createBlock(emptyType, '', [{ text: '', style: { ...DEFAULT_INLINE_STYLE } }]);
+      this.blocks.splice(idx, 0, emptyBlock);
       this.notify();
       return { blockId: block.id, offset: 0 };
     }

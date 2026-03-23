@@ -37,6 +37,14 @@ export class KeyboardHandler {
         e.preventDefault();
         return this.toggleInlineFormat(cursor, selection, '*');
       }
+      if (e.key === 'u') {
+        e.preventDefault();
+        return this.toggleInlineFormat(cursor, selection, '++');
+      }
+      if (e.key === 'S' && e.shiftKey) {
+        e.preventDefault();
+        return this.toggleInlineFormat(cursor, selection, '~~');
+      }
       return { type: 'none' };
     }
 
@@ -280,7 +288,7 @@ export class KeyboardHandler {
     return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
   }
 
-  /** hr 块：删除整块并跳到相邻块；块首：合并前块或删前块（前块为 hr 时） */
+  /** hr 块：删除整块并跳到相邻块；块首非 paragraph：降级为 paragraph；块首 paragraph：合并前块或删前块（前块为 hr 时） */
   private handleBackspace(
     cursor: CursorPosition,
     selection: SelectionRange | null,
@@ -302,6 +310,12 @@ export class KeyboardHandler {
     }
 
     if (cursor.offset === 0) {
+      if (block.type !== 'paragraph') {
+        block.type = 'paragraph';
+        this.blockStore.reparseBlock(block);
+        return { type: 'dataChanged', cursor };
+      }
+
       const prev = this.blockStore.getPrevBlock(cursor.blockId);
       if (prev?.type === 'hr') {
         const prevPrev = this.blockStore.getPrevBlock(prev.id);

@@ -239,7 +239,7 @@ flowchart TD
   KBHandler --> |"Backspace/Delete"| DeleteChar["删除字符/合并块"]
   KBHandler --> |"Enter"| SplitBlock["拆分块/列表续行"]
   KBHandler --> |"Tab"| Indent["缩进/反缩进"]
-  KBHandler --> |"Ctrl+B/I"| Format["切换加粗/斜体"]
+  KBHandler --> |"Ctrl+B/I/U, Ctrl+Shift+S"| Format["切换加粗/斜体/下划线/删除线"]
 ```
 
 ### 块级快捷键
@@ -257,6 +257,15 @@ flowchart TD
 | `---` | hr |
 | ` ``` ` | code-block |
 
+### 内联格式化
+
+| 快捷键 | Markdown 语法 | 效果 |
+|--------|---------------|------|
+| `Ctrl+B` | `**text**` | **加粗** |
+| `Ctrl+I` | `*text*` | *斜体* |
+| `Ctrl+U` | `++text++` | 下划线 |
+| `Ctrl+Shift+S` | `~~text~~` | ~~删除线~~ |
+
 ### 代码块特殊行为
 
 - **语言标记**：`` ```javascript `` 快捷键创建带语言的代码块，序列化时保留语言标记
@@ -265,10 +274,20 @@ flowchart TD
 - **双次 Enter 退出**：末尾连续两次回车（`\n\n`）退出代码块，创建新段落
 - **Tab 缩进**：只影响光标所在行，不影响其他行
 
+### 引用块特殊行为
+
+- **Enter**：在引用块内插入 `\n`，继续在同一引用块内编辑
+- **双次 Enter 退出**：末尾连续两次回车退出引用块，创建新段落
+
 ### 列表续行
 
 - 在列表项上按 Enter 自动创建同类型的新列表项
 - 在空列表项上按 Enter 退出列表，转为普通段落
+
+### 块首键盘行为
+
+- **Backspace**：非 paragraph 块在行首按 Backspace 降级为 paragraph，paragraph 块则合并到上一块
+- **Enter**：在块首按 Enter 在上方插入空块（列表/引用继承同类型，其他为 paragraph）
 
 ### HR (分割线) 交互
 

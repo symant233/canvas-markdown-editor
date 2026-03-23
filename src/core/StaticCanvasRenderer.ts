@@ -186,9 +186,18 @@ export class StaticCanvasRenderer {
 
         ctx.fillText(seg.text, seg.x, line.y + line.baseline);
 
-        // 删除线：通过 canvas 画线实现
         if (seg.style.strikethrough) {
           const y = line.y + line.height * 0.5;
+          ctx.strokeStyle = this.getTextColor(block.type, seg.style);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(seg.x, y);
+          ctx.lineTo(seg.x + seg.width, y);
+          ctx.stroke();
+        }
+
+        if (seg.style.underline) {
+          const y = line.y + line.baseline + 2;
           ctx.strokeStyle = this.getTextColor(block.type, seg.style);
           ctx.lineWidth = 1;
           ctx.beginPath();
@@ -249,7 +258,7 @@ export class StaticCanvasRenderer {
   private renderOrderedNumber(ctx: CanvasRenderingContext2D, layout: { x: number; lines: Array<{ y: number; baseline: number }> }, block: Block, index: number) {
     if (layout.lines.length === 0) return;
     const firstLine = layout.lines[0];
-    ctx.font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false });
+    ctx.font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false, underline: false });
     ctx.fillStyle = '#374151';
     ctx.fillText(`${index}.`, layout.x - LIST_INDENT, firstLine.y + firstLine.baseline);
   }

@@ -10,12 +10,13 @@ export type BlockType =
   | 'blockquote'
   | 'hr';
 
-/** 内联样式标记：对应 **bold**、*italic*、`code`、~~strikethrough~~ 等 */
+/** 内联样式标记：对应 **bold**、*italic*、`code`、~~strikethrough~~、++underline++ 等 */
 export interface InlineStyle {
   bold: boolean;
   italic: boolean;
   code: boolean;
   strikethrough: boolean;
+  underline: boolean;
   link?: string;
   color?: string;
 }
@@ -82,6 +83,7 @@ export const DEFAULT_INLINE_STYLE: InlineStyle = {
   italic: false,
   code: false,
   strikethrough: false,
+  underline: false,
 };
 
 /** 工厂函数：生成带唯一 id 的 Block，其余字段由参数传入 */

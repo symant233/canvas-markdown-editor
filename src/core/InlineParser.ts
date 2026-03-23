@@ -113,10 +113,33 @@ export function parseInlineMarkdown(text: string): ParseResult {
       }
     }
 
-    /* 纯文本段：从 i 起向后扫描，直到遇到 *、`、~~ 或结尾，整段作为无样式片段 */
+    if (text.startsWith('++', i)) {
+      const end = text.indexOf('++', i + 2);
+      if (end !== -1 && end > i + 2) {
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        i += 2;
+
+        const content = text.substring(i, end);
+        segments.push({ text: content, style: { ...DEFAULT_INLINE_STYLE, underline: true } });
+        for (let j = 0; j < content.length; j++) {
+          sourceToVisual[i + j] = visualOffset;
+          visualToSource.push(i + j);
+          visualOffset++;
+        }
+        i = end;
+
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        i += 2;
+        continue;
+      }
+    }
+
+    /* 纯文本段：从 i 起向后扫描，直到遇到 *、`、~~、++ 或结尾，整段作为无样式片段 */
     let plainEnd = i + 1;
     while (plainEnd < text.length) {
-      if (text[plainEnd] === '*' || text[plainEnd] === '`' || text.startsWith('~~', plainEnd)) {
+      if (text[plainEnd] === '*' || text[plainEnd] === '`' || text.startsWith('~~', plainEnd) || text.startsWith('++', plainEnd)) {
         break;
       }
       plainEnd++;
