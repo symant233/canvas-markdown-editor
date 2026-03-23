@@ -22,6 +22,7 @@ html, body, #root {
   flex: 1;
   display: flex;
   justify-content: center;
+  align-items: center;
   height: 100%;
   background: #f1f5f9;
   border-right: 1px solid #e2e8f0;
@@ -32,6 +33,7 @@ html, body, #root {
   position: relative;
   width: 100%;
   max-width: 800px;
+  max-height: 1000px;
   height: 100%;
   background: #ffffff;
   box-shadow: 0 0 20px rgba(0, 0, 0, 0.05);
