@@ -152,6 +152,7 @@ export class EditorManager {
     });
 
     selectionRenderer.startBlink(() => {
+      if (!inputManager.focused) return;
       const cleanup = this.applyCompositionForRendering();
       this.renderSelection();
       cleanup();
@@ -171,9 +172,15 @@ export class EditorManager {
     selectionCanvas.addEventListener('wheel', handleWheel, { passive: false });
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (!inputManager.focused) return;
       dispatcher.handleKeyDown(e, inputManager.composing);
     };
     window.addEventListener('keydown', handleKeyDown);
+
+    const handleBlur = () => {
+      this.renderSelection();
+    };
+    inputManager.onBlur(handleBlur);
 
     return () => {
       window.removeEventListener('resize', handleResize);
@@ -192,6 +199,7 @@ export class EditorManager {
 
   private onPointerDown = (e: PointerEvent) => {
     e.preventDefault();
+    this.inputManager?.focus();
     const rect = this.selectionCanvas!.getBoundingClientRect();
     const { scrollY } = dispatcher.getState();
     dispatcher.handlePointerDown(e.clientX - rect.left, e.clientY - rect.top + scrollY);
@@ -270,6 +278,12 @@ export class EditorManager {
     const ctx = this.selectionCanvas.getContext('2d');
     if (!ctx) return;
     const { cursor, selection, compositionText, scrollY } = dispatcher.getState();
+    const isFocused = this.inputManager?.focused ?? false;
+
+    if (!isFocused) {
+      selectionRenderer.render(ctx, blockStore.getBlocks(), null, null, window.devicePixelRatio, scrollY);
+      return;
+    }
 
     if (this.compositionActive && compositionText && cursor) {
       const adjustedCursor: CursorPosition = {

@@ -90,6 +90,7 @@ src/
 │   ├── HitTester.ts                 # 点击位置 -> 光标定位
 │   ├── CoordTransformer.ts          # 坐标系转换
 │   ├── ScrollHelper.ts              # 滚动截屏几何拆分算法
+│   ├── SyntaxHighlighter.ts         # 代码块语法高亮（highlight.js）
 │   └── EventDispatcher.ts           # 事件派发与状态管理
 ```
 
@@ -258,6 +259,8 @@ flowchart TD
 
 ### 代码块特殊行为
 
+- **语言标记**：`` ```javascript `` 快捷键创建带语言的代码块，序列化时保留语言标记
+- **语法高亮**：使用 `highlight.js` 对代码块进行语法着色渲染
 - **Enter**：在代码块内插入 `\n`（而非创建新块），继续在代码块内编辑
 - **双次 Enter 退出**：末尾连续两次回车（`\n\n`）退出代码块，创建新段落
 - **Tab 缩进**：只影响光标所在行，不影响其他行
@@ -377,6 +380,14 @@ flowchart TD
 - `src/core/StaticCanvasRenderer.ts` — `renderScroll()` 方法实现 blit + 条带补画
 - `src/core/EventDispatcher.ts` — scroll 事件携带 `oldScrollY`
 - `src/editor/EditorManager.ts` — `renderStaticScroll()` 调度入口
+
+## 焦点管理
+
+编辑器支持焦点感知：当用户点击画布外部（如源码编辑面板）时，画布自动失焦，键盘事件不再影响画布内容。
+
+- **失焦行为**：光标和选区立即隐藏，闪烁定时器跳过渲染
+- **恢复焦点**：点击画布时调用 `InputManager.focus()` 重新聚焦隐藏 textarea，光标立即恢复
+- **焦点检测**：`InputManager.focused` getter 检查 `document.activeElement === textarea`
 
 ## 技术栈
 

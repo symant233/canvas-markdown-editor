@@ -91,6 +91,14 @@ export class InputManager {
     return this.isComposing;
   }
 
+  get focused(): boolean {
+    return document.activeElement === this.textarea;
+  }
+
+  onBlur(handler: () => void) {
+    this.textarea.addEventListener('blur', handler);
+  }
+
   destroy() {
     this.textarea.removeEventListener('input', this.onInput);
     this.textarea.removeEventListener('compositionstart', this.onCompositionStart);

@@ -17,7 +17,7 @@ export function blocksToMarkdown(blocks: readonly Block[]): string {
       case 'bullet-list': return `- ${block.rawText}`;
       case 'ordered-list': return `${orderedCounter}. ${block.rawText}`;
       case 'blockquote': return `> ${block.rawText}`;
-      case 'code-block': return `\`\`\`\n${block.rawText}\n\`\`\``;
+      case 'code-block': return `\`\`\`${block.language || ''}\n${block.rawText}\n\`\`\``;
       case 'hr': return '---';
       default: return block.rawText;
     }
