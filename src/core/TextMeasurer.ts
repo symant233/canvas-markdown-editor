@@ -105,7 +105,11 @@ export class TextMeasurer {
     return BLOCK_FONT_CONFIG[blockType].size;
   }
 
-  /** 获取文本的垂直视觉中心（相对于行顶部），基于字体实际 ascent/descent 度量 */
+  /**
+   * 获取文本的垂直视觉中心（相对于行顶部）。
+   * 使用 fontBoundingBoxAscent / fontBoundingBoxDescent（字体级度量，非字符级），
+   * 计算字体整体 bounding box 的中心点，对 Latin 和 CJK 文字都能正确对齐。
+   */
   getTextVisualCenter(blockType: BlockType): number {
     const cacheKey = `__vcenter__|${blockType}`;
     const cached = this.cache.get(cacheKey);
@@ -113,7 +117,7 @@ export class TextMeasurer {
 
     const font = this.buildFont(blockType, { bold: false, italic: false, code: false, strikethrough: false, underline: false, highlight: false });
     this.ctx.font = font;
-    const metrics = this.ctx.measureText('Mg啊');
+    const metrics = this.ctx.measureText('x');
     const baseline = this.getBaseline(blockType);
     const center = baseline - (metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2;
     this.cache.set(cacheKey, center);
