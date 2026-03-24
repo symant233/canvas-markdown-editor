@@ -67,24 +67,74 @@ export function parseInlineMarkdown(text: string): ParseResult {
       }
     }
 
+    /* 内联代码：支持单反引号 `code` 和多反引号 `` `code` `` 语法。
+     * 多反引号允许内容包含较少数量的反引号而不会提前闭合。
+     * 例如 `` `code` `` → 渲染为 `code`（含反引号的 code 内联）。
+     * 闭合条件：找到与开头 **恰好** 相同数量的连续反引号。 */
     if (text[i] === '`') {
-      const end = text.indexOf('`', i + 1);
-      /* end > i + 1：避免 `` `` 空匹配 */
-      if (end !== -1 && end > i + 1) {
-        sourceToVisual[i] = visualOffset;
-        i += 1;
+      // 1) 统计开头连续反引号个数，例如 `` 就是 2
+      let backtickCount = 0;
+      while (i + backtickCount < text.length && text[i + backtickCount] === '`') {
+        backtickCount++;
+      }
 
-        const content = text.substring(i, end);
+      // 2) 从开头反引号之后开始扫描，寻找恰好 backtickCount 个连续反引号作为闭合
+      let end = -1;
+      let j = i + backtickCount;
+      while (j < text.length) {
+        if (text[j] === '`') {
+          let closeCount = 0;
+          while (j + closeCount < text.length && text[j + closeCount] === '`') {
+            closeCount++;
+          }
+          if (closeCount === backtickCount) {
+            end = j; // 找到匹配的闭合位置
+            break;
+          }
+          // 数量不匹配，跳过这一组反引号继续搜索
+          j += closeCount;
+        } else {
+          j++;
+        }
+      }
+
+      // 3) end > i + backtickCount 确保内容非空
+      if (end !== -1 && end > i + backtickCount) {
+        // 映射所有开头反引号 → 当前 visualOffset（标记符不占视觉宽度）
+        for (let k = 0; k < backtickCount; k++) {
+          sourceToVisual[i + k] = visualOffset;
+        }
+        i += backtickCount;
+
+        let contentStart = i;
+        let contentEnd = end;
+        const raw = text.substring(contentStart, contentEnd);
+        // CommonMark 规范：多反引号时，若内容首尾各有空格且非全空格，去掉首尾各一个空格
+        // 例如 `` `hi` `` 的 raw 是 " `hi` "，剥离后变为 "`hi`"
+        if (backtickCount > 1 && raw.length >= 2 && raw[0] === ' ' && raw[raw.length - 1] === ' ' && raw.trim().length > 0) {
+          sourceToVisual[contentStart] = visualOffset;
+          contentStart += 1;
+          contentEnd -= 1;
+        }
+
+        const content = text.substring(contentStart, contentEnd);
         segments.push({ text: content, style: { ...DEFAULT_INLINE_STYLE, code: true } });
-        for (let j = 0; j < content.length; j++) {
-          sourceToVisual[i + j] = visualOffset;
-          visualToSource.push(i + j);
+        for (let ci = 0; ci < content.length; ci++) {
+          sourceToVisual[contentStart + ci] = visualOffset;
+          visualToSource.push(contentStart + ci);
           visualOffset++;
         }
-        i = end;
 
-        sourceToVisual[i] = visualOffset;
-        i += 1;
+        // 映射被剥离的尾部空格（如果有的话）
+        if (contentEnd < end) {
+          sourceToVisual[contentEnd] = visualOffset;
+        }
+
+        // 映射所有闭合反引号 → 当前 visualOffset
+        for (let k = 0; k < backtickCount; k++) {
+          sourceToVisual[end + k] = visualOffset;
+        }
+        i = end + backtickCount;
         continue;
       }
     }

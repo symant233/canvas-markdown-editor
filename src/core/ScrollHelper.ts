@@ -23,8 +23,8 @@ export interface ScrollBlitResult {
  * 几何示意（向下滚 deltaY）：
  *   旧视口:  [oldScrollY ─────────── oldScrollY + vpH]
  *   新视口:       [newScrollY ─────────── newScrollY + vpH]
- *   交集:         [newScrollY ─── oldScrollY + vpH]   ← blit 区
- *   新条带:                                   [oldScrollY + vpH ── newScrollY + vpH]
+ *   交集:         [newScrollY ────── oldScrollY + vpH]   ← blit 区
+ *   新条带:       [oldScrollY + vpH ───── newScrollY + vpH]
  */
 export function computeVerticalScrollBlit(
   oldScrollY: number,

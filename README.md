@@ -71,7 +71,6 @@ src/
 ├── App.css                          # 布局与滚动条样式
 ├── editor/
 │   ├── EditorManager.ts             # 画布管理类 + 核心模块单例
-│   └── sampleContent.ts             # 初始示例 Markdown 内容
 ├── components/
 │   └── Scrollbar.tsx                # 自定义滚动条组件
 ├── core/
