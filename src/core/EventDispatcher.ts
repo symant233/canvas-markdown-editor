@@ -114,10 +114,34 @@ export class EventDispatcher {
   handlePointerMove(sceneX: number, sceneY: number) {
     if (!this.state.isDragging || !this.state.cursor) return;
 
-    const pos = this.hitTester.hitPosition(sceneX, sceneY, this.blockStore.getBlocks());
+    let pos = this.hitTester.hitPosition(sceneX, sceneY, this.blockStore.getBlocks());
     if (pos) {
       const anchor = this.state.selection?.anchor ?? this.state.cursor;
-      if (pos.blockId !== anchor.blockId || pos.offset !== anchor.offset) {
+
+      /**
+       * 锚点在表单元格内时，若命中落到其他格或表外，将 focus 钳到锚点格首/尾（按指针在格上边或下边），禁止跨格拖选。
+       */
+      if (anchor.tableCell) {
+        if (!pos.tableCell || pos.blockId !== anchor.blockId ||
+            pos.tableCell.row !== anchor.tableCell.row || pos.tableCell.col !== anchor.tableCell.col) {
+          const block = this.blockStore.getBlock(anchor.blockId);
+          if (block) {
+            const cellLen = this.blockStore.getTableCellRawTextLength(block, anchor.tableCell.row, anchor.tableCell.col);
+            const cellLayout = block.layout?.tableCells;
+            if (cellLayout) {
+              const layoutRow = anchor.tableCell.row === -1 ? 0 : anchor.tableCell.row + 1;
+              const cl = cellLayout[layoutRow]?.[anchor.tableCell.col];
+              if (cl) {
+                const isAbove = sceneY < cl.y;
+                pos = { blockId: anchor.blockId, offset: isAbove ? 0 : cellLen, tableCell: anchor.tableCell };
+              }
+            }
+          }
+        }
+      }
+
+      if (pos.blockId !== anchor.blockId || pos.offset !== anchor.offset ||
+          pos.tableCell?.row !== anchor.tableCell?.row || pos.tableCell?.col !== anchor.tableCell?.col) {
         this.state.selection = { anchor, focus: pos };
         this.state.cursor = pos;
         this.emit({ type: 'selectionOnly' });
@@ -131,7 +155,10 @@ export class EventDispatcher {
 
   // ─── 文本输入 ───
 
-  /** 普通文本输入：删选区 → 插入 → 检查块级快捷键 → 增量重排 → 通知渲染 */
+  /**
+   * 普通文本输入：若有选区则先删选区 → insertTextAtCursor → 非表内则检查块级快捷键 →
+   * 从当前块增量重排 → 确保光标可见 → 通知全量渲染。
+   */
   handleTextInput(text: string) {
     if (this.state.selection) {
       this.deleteSelectedRange();
@@ -141,9 +168,12 @@ export class EventDispatcher {
     const newCursor = this.blockStore.insertTextAtCursor(this.state.cursor, text);
     this.state.cursor = newCursor;
 
-    this.checkAndApplyShortcut(newCursor.blockId);
+    if (!newCursor.tableCell) {
+      this.checkAndApplyShortcut(newCursor.blockId);
+    }
     this.reflowFrom(this.state.cursor.blockId);
     this.resetBlink();
+    this.ensureCursorVisible();
     this.emit({ type: 'full' });
   }
 
@@ -159,7 +189,10 @@ export class EventDispatcher {
     this.emit({ type: 'full' });
   }
 
-  /** 组合结束：提交最终文本，流程与 handleTextInput 相同 */
+  /**
+   * 组合输入结束：清空 composition 临时串，若有选区则先删选区，再插入最终文本；
+   * 流程与 handleTextInput 相同（快捷键、重排、滚动、full 渲染）。
+   */
   handleCompositionEnd(text: string) {
     this.state.compositionText = '';
     if (this.state.selection) {
@@ -170,15 +203,21 @@ export class EventDispatcher {
     const newCursor = this.blockStore.insertTextAtCursor(this.state.cursor, text);
     this.state.cursor = newCursor;
 
-    this.checkAndApplyShortcut(newCursor.blockId);
+    if (!newCursor.tableCell) {
+      this.checkAndApplyShortcut(newCursor.blockId);
+    }
     this.reflowFrom(this.state.cursor.blockId);
     this.resetBlink();
+    this.ensureCursorVisible();
     this.emit({ type: 'full' });
   }
 
   // ─── 复制粘贴 ───
 
-  /** 获取选区内的视觉文本（不含 Markdown 标记符） */
+  /**
+   * 获取选区内的视觉文本（不含 Markdown 标记符）。
+   * 同一块同一表单元格时从该格拼接串按 source→visual 切片；跨块仍按块级 visual 文本拼接。
+   */
   getSelectedText(): string {
     const sel = this.state.selection;
     if (!sel) return '';
@@ -197,6 +236,17 @@ export class EventDispatcher {
     if (start.blockId === end.blockId) {
       const block = this.blockStore.getBlock(start.blockId);
       if (!block) return '';
+
+      if (start.tableCell && end.tableCell &&
+          start.tableCell.row === end.tableCell.row && start.tableCell.col === end.tableCell.col) {
+        const cell = this.blockStore.getTableCell(block, start.tableCell.row, start.tableCell.col);
+        if (!cell) return '';
+        const cellVisualText = cell.inlines.map(s => s.text).join('');
+        const sv = this.blockStore.tableCellSourceToVisual(block, start.tableCell.row, start.tableCell.col, start.offset);
+        const ev = this.blockStore.tableCellSourceToVisual(block, end.tableCell.row, end.tableCell.col, end.offset);
+        return cellVisualText.substring(sv, ev);
+      }
+
       const visualText = this.getVisualText(block);
       const startVisual = this.blockStore.sourceToVisual(block, start.offset);
       const endVisual = this.blockStore.sourceToVisual(block, end.offset);
@@ -240,60 +290,51 @@ export class EventDispatcher {
 
   // ─── 键盘事件 ───
 
-  /** 处理 keydown 事件，根据 KeyboardAction 类型执行对应操作 */
+  /**
+   * 处理 keydown：IME 组合中忽略；否则交给 KeyboardHandler，按 KeyboardAction
+   * 更新 cursor/selection、删选区、分块/合并、重排，并发出 selectionOnly 或 full。
+   */
   handleKeyDown(e: KeyboardEvent, isComposing: boolean) {
     if (!this.state.cursor) return;
     if (isComposing) return;
 
     const action = this.keyboardHandler.handleKeyDown(e, this.state.cursor, this.state.selection);
+    if (action.type === 'none') return;
 
     switch (action.type) {
       case 'moveCursor':
         this.state.cursor = action.cursor;
         this.state.selection = action.selection;
-        this.resetBlink();
-        this.emit({ type: 'selectionOnly' });
         break;
-
       case 'dataChanged':
         this.state.cursor = action.cursor;
         this.state.selection = null;
         this.reflowFrom(action.cursor.blockId);
-        this.resetBlink();
-        this.emit({ type: 'full' });
         break;
-
       case 'delete':
         this.deleteSelectedRange();
         this.fullLayout();
-        this.resetBlink();
-        this.emit({ type: 'full' });
         break;
-
       case 'splitBlock':
         this.state.cursor = action.newCursor;
         this.state.selection = null;
         this.fullLayout();
-        this.resetBlink();
-        this.emit({ type: 'full' });
         break;
-
       case 'mergeWithPrev':
         this.state.cursor = action.newCursor;
         this.state.selection = null;
         this.fullLayout();
-        this.resetBlink();
-        this.emit({ type: 'full' });
         break;
-
       case 'dataChangedWithSelection':
         this.state.cursor = action.cursor;
         this.state.selection = action.selection;
         this.reflowFrom(action.cursor.blockId);
-        this.resetBlink();
-        this.emit({ type: 'full' });
         break;
     }
+
+    this.resetBlink();
+    this.ensureCursorVisible();
+    this.emit({ type: action.type === 'moveCursor' ? 'selectionOnly' : 'full' });
   }
 
   // ─── 滚动 ───
@@ -347,7 +388,10 @@ export class EventDispatcher {
     }
   }
 
-  /** 删除选区内的文本。单块内 substring，跨块合并首尾。 */
+  /**
+   * 删除选区内的文本。
+   * 同块同表单元格只改 cell.rawText 并 reparseTableCell + rebuildTableRawText；否则单块改 rawText 或跨块合并删除中间块。
+   */
   private deleteSelectedRange() {
     const sel = this.state.selection;
     if (!sel) return;
@@ -370,8 +414,18 @@ export class EventDispatcher {
     if (startPos.blockId === endPos.blockId) {
       const block = this.blockStore.getBlock(startPos.blockId);
       if (block) {
-        block.rawText = block.rawText.substring(0, startPos.offset) + block.rawText.substring(endPos.offset);
-        this.blockStore.reparseBlock(block);
+        if (startPos.tableCell && endPos.tableCell && block.tableData &&
+            startPos.tableCell.row === endPos.tableCell.row && startPos.tableCell.col === endPos.tableCell.col) {
+          const cell = this.blockStore.getTableCell(block, startPos.tableCell.row, startPos.tableCell.col);
+          if (cell) {
+            cell.rawText = cell.rawText.substring(0, startPos.offset) + cell.rawText.substring(endPos.offset);
+            this.blockStore.reparseTableCellPublic(cell);
+            this.blockStore.rebuildTableRawTextPublic(block);
+          }
+        } else {
+          block.rawText = block.rawText.substring(0, startPos.offset) + block.rawText.substring(endPos.offset);
+          this.blockStore.reparseBlock(block);
+        }
       }
     } else {
       const startBlock = this.blockStore.getBlock(startPos.blockId);
@@ -416,9 +470,78 @@ export class EventDispatcher {
     return Math.max(0, lastBlock.layout.y + lastBlock.layout.height - this.getViewportHeight() + 40);
   }
 
-  /** 检测悬停是否在 checkbox 上，返回是否需要显示 pointer 光标 */
+  /**
+   * 检测指针是否悬停在任务列表 checkbox 上；为 true 时 UI 可显示手型光标。
+   */
   checkHoverCheckbox(sceneX: number, sceneY: number): boolean {
     return this.hitTester.hitCheckbox(sceneX, sceneY, this.blockStore.getBlocks()) !== null;
+  }
+
+  /**
+   * 光标所在行若超出视口则调整 scrollY；表内用单元格子 layout 与 tableCellSourceToVisual 定位行盒，逻辑与正文块平行。
+   */
+  private ensureCursorVisible() {
+    const cursor = this.state.cursor;
+    if (!cursor) return;
+
+    const block = this.blockStore.getBlock(cursor.blockId);
+    if (!block?.layout) return;
+
+    const viewportH = this.getViewportHeight();
+    const scrollY = this.state.scrollY;
+    let cursorY: number;
+    let cursorH: number;
+
+    if (cursor.tableCell && block.layout.tableCells) {
+      const { row, col } = cursor.tableCell;
+      const layoutRow = row === -1 ? 0 : row + 1;
+      const cellLayout = block.layout.tableCells[layoutRow]?.[col];
+      if (cellLayout && cellLayout.lines.length > 0) {
+        const targetLine = this.findCursorLine(cellLayout.lines,
+          this.blockStore.tableCellSourceToVisual(block, row, col, cursor.offset));
+        cursorY = targetLine.y;
+        cursorH = targetLine.height;
+      } else {
+        cursorY = block.layout.y;
+        cursorH = block.layout.height;
+      }
+    } else if (block.layout.lines.length > 0) {
+      const visualOffset = this.blockStore.sourceToVisual(block, cursor.offset);
+      const targetLine = this.findCursorLine(block.layout.lines, visualOffset);
+      cursorY = targetLine.y;
+      cursorH = targetLine.height;
+    } else {
+      cursorY = block.layout.y;
+      cursorH = block.layout.height;
+    }
+
+    if (cursorY < scrollY) {
+      const oldScrollY = this.state.scrollY;
+      this.state.scrollY = cursorY;
+      this.emit({ type: 'scroll', oldScrollY });
+    } else if (cursorY + cursorH > scrollY + viewportH) {
+      const oldScrollY = this.state.scrollY;
+      this.state.scrollY = Math.min(this.getMaxScroll(), cursorY + cursorH - viewportH + 10);
+      this.emit({ type: 'scroll', oldScrollY });
+    }
+  }
+
+  /**
+   * 按累计 visual 字符（含 newlineBefore）判断 visualOffset 落在哪一行，供 ensureCursorVisible 与表单元格多行共用。
+   */
+  private findCursorLine(
+    lines: readonly { y: number; height: number; segments: readonly { text: string }[]; newlineBefore?: boolean }[],
+    visualOffset: number,
+  ) {
+    let charCount = 0;
+    for (const line of lines) {
+      if (line.newlineBefore) charCount++;
+      let lineLen = 0;
+      for (const seg of line.segments) lineLen += seg.text.length;
+      if (visualOffset <= charCount + lineLen) return line;
+      charCount += lineLen;
+    }
+    return lines[lines.length - 1];
   }
 
   private emit(request: RenderRequest) {

@@ -1,4 +1,4 @@
-import type { Block, CursorPosition } from './types';
+import type { Block, CursorPosition, TableCell } from './types';
 import { createBlock, DEFAULT_INLINE_STYLE } from './types';
 import { parseInlineMarkdown } from './InlineParser';
 import { highlightCode } from './SyntaxHighlighter';
@@ -58,6 +58,17 @@ export class BlockStore {
     const block = this.getBlock(cursor.blockId);
     if (!block) return cursor;
 
+    if (cursor.tableCell && block.tableData) {
+      const cell = this.getTableCell(block, cursor.tableCell.row, cursor.tableCell.col);
+      if (cell) {
+        cell.rawText = cell.rawText.substring(0, cursor.offset) + text + cell.rawText.substring(cursor.offset);
+        this.reparseTableCell(cell);
+        this.rebuildTableRawText(block);
+        this.notify();
+        return { blockId: cursor.blockId, offset: cursor.offset + text.length, tableCell: cursor.tableCell };
+      }
+    }
+
     const before = block.rawText.substring(0, cursor.offset);
     const after = block.rawText.substring(cursor.offset);
     block.rawText = before + text + after;
@@ -69,10 +80,22 @@ export class BlockStore {
   }
 
   /** 删除 rawText 指定位置字符 */
-  deleteCharAt(blockId: string, offset: number) {
+  deleteCharAt(blockId: string, offset: number, tableCell?: { row: number; col: number }) {
     const block = this.getBlock(blockId);
-    if (!block || offset < 0 || offset >= block.rawText.length) return;
+    if (!block) return;
 
+    if (tableCell && block.tableData) {
+      const cell = this.getTableCell(block, tableCell.row, tableCell.col);
+      if (cell && offset >= 0 && offset < cell.rawText.length) {
+        cell.rawText = cell.rawText.substring(0, offset) + cell.rawText.substring(offset + 1);
+        this.reparseTableCell(cell);
+        this.rebuildTableRawText(block);
+        this.notify();
+      }
+      return;
+    }
+
+    if (offset < 0 || offset >= block.rawText.length) return;
     block.rawText = block.rawText.substring(0, offset) + block.rawText.substring(offset + 1);
     this.reparseBlock(block);
     this.notify();
@@ -192,7 +215,74 @@ export class BlockStore {
     return () => this.listeners.delete(listener);
   }
 
-  /** 通知所有监听者 */
+  getTableCell(block: Block, row: number, col: number): TableCell | undefined {
+    if (!block.tableData) return undefined;
+    if (row === -1) return block.tableData.headers[col];
+    return block.tableData.rows[row]?.[col];
+  }
+
+  getTableCellRawTextLength(block: Block, row: number, col: number): number {
+    return this.getTableCell(block, row, col)?.rawText.length ?? 0;
+  }
+
+  tableCellSourceToVisual(block: Block, row: number, col: number, sourceOffset: number): number {
+    const cell = this.getTableCell(block, row, col);
+    if (!cell || cell.sourceToVisual.length === 0) return sourceOffset;
+    return cell.sourceToVisual[Math.min(sourceOffset, cell.sourceToVisual.length - 1)] ?? sourceOffset;
+  }
+
+  /** 外部在直接修改 cell.rawText 后调用，重算该格 inlines 与 source/visual 映射。 */
+  reparseTableCellPublic(cell: TableCell) { this.reparseTableCell(cell); }
+
+  /** 任一单元格变更后同步整块的 Markdown 表 rawText（保留原管道行模板）。 */
+  rebuildTableRawTextPublic(block: Block) { this.rebuildTableRawText(block); }
+
+  private reparseTableCell(cell: TableCell) {
+    const result = parseInlineMarkdown(cell.rawText);
+    cell.inlines = result.segments;
+    cell.sourceToVisual = result.sourceToVisual;
+    cell.visualToSource = result.visualToSource;
+  }
+
+  /**
+   * 用 tableData 中各格 rawText 写回块级 rawText。
+   * 若存在原始行字符串模板，仅替换管道分隔之间的「实格」内容并保留格内前后空白样式，避免用户排版被统一成固定格式。
+   */
+  private rebuildTableRawText(block: Block) {
+    if (!block.tableData) return;
+    const { headers, rows, originalSeparator } = block.tableData;
+    const colCount = headers.length;
+
+    const oldLines = block.rawText.split('\n');
+    const buildRow = (cells: TableCell[], templateLine?: string) => {
+      if (templateLine) {
+        const parts = templateLine.split('|');
+        const cellValues = cells.map(c => c.rawText);
+        let rebuilt = '';
+        let cellIdx = 0;
+        for (let p = 0; p < parts.length; p++) {
+          if (p > 0) rebuilt += '|';
+          const partTrimmed = parts[p].trim();
+          if (cellIdx < cellValues.length && partTrimmed !== '' && p > 0 && p < parts.length - 1) {
+            const leadingSpace = parts[p].match(/^(\s*)/)?.[1] ?? ' ';
+            const trailingSpace = parts[p].match(/(\s*)$/)?.[1] ?? ' ';
+            rebuilt += leadingSpace + cellValues[cellIdx] + trailingSpace;
+            cellIdx++;
+          } else {
+            rebuilt += parts[p];
+          }
+        }
+        return rebuilt;
+      }
+      return '| ' + Array.from({ length: colCount }, (_, c) => cells[c]?.rawText ?? '').join(' | ') + ' |';
+    };
+
+    const headerRow = buildRow(headers, oldLines[0]);
+    const bodyRows = rows.map((row, idx) => buildRow(row, oldLines[idx + 2]));
+
+    block.rawText = [headerRow, originalSeparator, ...bodyRows].join('\n');
+  }
+
   private notify() {
     this.listeners.forEach(l => l());
   }

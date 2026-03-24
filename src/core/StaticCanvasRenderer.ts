@@ -1,6 +1,7 @@
 import type { Block, InlineStyle } from './types';
 import { TextMeasurer } from './TextMeasurer';
 import { computeVerticalScrollBlit } from './ScrollHelper';
+import { Colors } from '../config/colors';
 
 const HEADING_BOTTOM_BORDER: Record<string, boolean> = {
   'heading-1': true,
@@ -148,13 +149,15 @@ export class StaticCanvasRenderer {
     ctx.restore();
   }
 
-  /** 各块类型的渲染入口（hr/code-block/blockquote/bullet-list/ordered-list） */
   private renderBlock(ctx: CanvasRenderingContext2D, block: Block, orderedListIndex: number = 0) {
     const layout = block.layout!;
 
     switch (block.type) {
       case 'hr':
         this.renderHR(ctx, layout);
+        return;
+      case 'table':
+        this.renderTable(ctx, block, layout);
         return;
       case 'code-block':
         this.renderCodeBlockBackground(ctx, layout);
@@ -163,7 +166,7 @@ export class StaticCanvasRenderer {
         this.renderQuoteBar(ctx, layout);
         break;
       case 'bullet-list':
-        this.renderBullet(ctx, layout);
+        this.renderBullet(ctx, layout, block);
         break;
       case 'ordered-list':
         this.renderOrderedNumber(ctx, layout, block, orderedListIndex);
@@ -179,16 +182,16 @@ export class StaticCanvasRenderer {
         ctx.fillStyle = this.getTextColor(block.type, seg.style);
 
         if (seg.style.highlight) {
-          ctx.fillStyle = '#fef08a';
+          ctx.fillStyle = Colors.highlightBg;
           ctx.fillRect(seg.x, line.y + 2, seg.width, line.height - 4);
           ctx.fillStyle = this.getTextColor(block.type, seg.style);
         }
 
         if (seg.style.code && block.type !== 'code-block') {
-          ctx.fillStyle = '#e5e7eb';
+          ctx.fillStyle = Colors.inlineCodeBg;
           const padding = 2;
           ctx.fillRect(seg.x - padding, line.y + 2, seg.width + padding * 2, line.height - 4);
-          ctx.fillStyle = '#dc2626';
+          ctx.fillStyle = Colors.inlineCodeText;
           ctx.font = this.textMeasurer.buildFont(block.type, seg.style);
         }
 
@@ -219,7 +222,7 @@ export class StaticCanvasRenderer {
     // heading 底部分割线
     if (HEADING_BOTTOM_BORDER[block.type]) {
       const bottomY = layout.y + layout.height;
-      ctx.strokeStyle = '#e5e7eb';
+      ctx.strokeStyle = Colors.headingBottomBorder;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(layout.x, bottomY);
@@ -228,9 +231,92 @@ export class StaticCanvasRenderer {
     }
   }
 
+  private renderTable(ctx: CanvasRenderingContext2D, block: Block, layout: import('./types').BlockLayout) {
+    if (!layout.tableCells || !block.tableData) return;
+    const data = block.tableData;
+
+    ctx.strokeStyle = Colors.tableBorder;
+    ctx.lineWidth = 1;
+
+    for (let r = 0; r < layout.tableCells.length; r++) {
+      const isHeader = r === 0;
+      const row = layout.tableCells[r];
+
+      if (isHeader) {
+        ctx.fillStyle = Colors.tableHeaderBg;
+        ctx.fillRect(layout.x, row[0].y, layout.width, row[0].height);
+      }
+
+      for (let c = 0; c < row.length; c++) {
+        const cell = row[c];
+        ctx.strokeRect(cell.x, cell.y, cell.width, cell.height);
+
+        for (const line of cell.lines) {
+          for (const seg of line.segments) {
+            const segStyle = seg.style;
+            ctx.font = this.textMeasurer.buildFont('table', segStyle);
+            ctx.fillStyle = this.getTextColor('table', segStyle);
+
+            if (segStyle.highlight) {
+              ctx.fillStyle = Colors.highlightBg;
+              ctx.fillRect(seg.x, line.y + 2, seg.width, line.height - 4);
+              ctx.fillStyle = this.getTextColor('table', segStyle);
+            }
+
+            if (segStyle.code) {
+              ctx.fillStyle = Colors.inlineCodeBg;
+              const pad = 2;
+              ctx.fillRect(seg.x - pad, line.y + 2, seg.width + pad * 2, line.height - 4);
+              ctx.fillStyle = Colors.inlineCodeText;
+              ctx.font = this.textMeasurer.buildFont('table', segStyle);
+            }
+
+            const alignment = data.alignments[c] ?? 'none';
+            let drawX = seg.x;
+            if (alignment === 'center' || alignment === 'right') {
+              let totalSegWidth = 0;
+              for (const s of line.segments) totalSegWidth += s.width;
+              const available = cell.width - 20;
+              if (alignment === 'center') drawX = cell.x + 10 + (available - totalSegWidth) / 2;
+              else drawX = cell.x + 10 + available - totalSegWidth;
+            }
+
+            ctx.fillText(seg.text, drawX, line.y + line.baseline);
+
+            if (segStyle.bold && isHeader) {
+              ctx.fillText(seg.text, drawX, line.y + line.baseline);
+            }
+
+            if (segStyle.strikethrough) {
+              const sy = line.y + line.height * 0.5;
+              ctx.strokeStyle = this.getTextColor('table', segStyle);
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(drawX, sy);
+              ctx.lineTo(drawX + seg.width, sy);
+              ctx.stroke();
+              ctx.strokeStyle = Colors.tableBorder;
+            }
+
+            if (segStyle.underline) {
+              const uy = line.y + line.baseline + 2;
+              ctx.strokeStyle = this.getTextColor('table', segStyle);
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(drawX, uy);
+              ctx.lineTo(drawX + seg.width, uy);
+              ctx.stroke();
+              ctx.strokeStyle = Colors.tableBorder;
+            }
+          }
+        }
+      }
+    }
+  }
+
   private renderHR(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; width: number; height: number }) {
     const centerY = layout.y + layout.height / 2;
-    ctx.strokeStyle = '#d1d5db';
+    ctx.strokeStyle = Colors.border;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(layout.x, centerY);
@@ -240,23 +326,23 @@ export class StaticCanvasRenderer {
 
   /** 圆角矩形背景 */
   private renderCodeBlockBackground(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; width: number; height: number }) {
-    ctx.fillStyle = '#f3f4f6';
+    ctx.fillStyle = Colors.codeBlockBg;
     this.roundRect(ctx, layout.x - CODE_BLOCK_PADDING, layout.y - 4, layout.width + CODE_BLOCK_PADDING * 2, layout.height + 8, CODE_BLOCK_RADIUS);
     ctx.fill();
   }
 
   private renderQuoteBar(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; height: number }) {
-    ctx.fillStyle = '#d1d5db';
+    ctx.fillStyle = Colors.quoteBar;
     ctx.fillRect(layout.x - QUOTE_BAR_GAP, layout.y, QUOTE_BAR_WIDTH, layout.height);
   }
 
-  /** 第一行左侧绘制圆点 */
-  private renderBullet(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; lines: Array<{ y: number; height: number }> }) {
+  /** 无序列表：第一行左侧绘制圆点 */
+  private renderBullet(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; lines: Array<{ y: number; height: number }> }, block: Block) {
     if (layout.lines.length === 0) return;
     const firstLine = layout.lines[0];
-    const bulletY = firstLine.y + firstLine.height / 2;
+    const bulletY = firstLine.y + this.textMeasurer.getTextVisualCenter(block.type);
     const bulletX = layout.x - LIST_INDENT / 2;
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = Colors.textSecondary;
     ctx.beginPath();
     ctx.arc(bulletX, bulletY, 3, 0, Math.PI * 2);
     ctx.fill();
@@ -267,7 +353,7 @@ export class StaticCanvasRenderer {
     if (layout.lines.length === 0) return;
     const firstLine = layout.lines[0];
     ctx.font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false, underline: false, highlight: false });
-    ctx.fillStyle = '#374151';
+    ctx.fillStyle = Colors.textSecondary;
     ctx.fillText(`${index}.`, layout.x - LIST_INDENT, firstLine.y + firstLine.baseline);
   }
 
@@ -280,16 +366,16 @@ export class StaticCanvasRenderer {
     const textCenter = this.textMeasurer.getTextVisualCenter(block.type);
     const cy = firstLine.y + textCenter - size / 2;
 
-    ctx.strokeStyle = checked ? '#2563eb' : '#9ca3af';
+    ctx.strokeStyle = checked ? Colors.checkboxChecked : Colors.checkboxUnchecked;
     ctx.lineWidth = 1.5;
     this.roundRect(ctx, cx, cy, size, size, 2);
     ctx.stroke();
 
     if (checked) {
-      ctx.fillStyle = '#2563eb';
+      ctx.fillStyle = Colors.checkboxChecked;
       this.roundRect(ctx, cx, cy, size, size, 2);
       ctx.fill();
-      ctx.strokeStyle = '#fff';
+      ctx.strokeStyle = Colors.checkboxCheckmark;
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(cx + 3, cy + size / 2);
@@ -301,11 +387,10 @@ export class StaticCanvasRenderer {
 
   private getTextColor(blockType: string, style: InlineStyle): string {
     if (style.color) return style.color;
-    if (style.link) return '#2563eb';
-    if (blockType === 'heading-6') return '#6b7280';
-    if (blockType === 'blockquote') return '#6b7280';
-    if (blockType === 'code-block') return '#1f2937';
-    return '#1f2937';
+    if (style.link) return Colors.link;
+    if (blockType === 'heading-6') return Colors.textMuted;
+    if (blockType === 'blockquote') return Colors.textMuted;
+    return Colors.text;
   }
 
   /** 手动绘制圆角矩形路径（兼容不支持 ctx.roundRect 的环境） */

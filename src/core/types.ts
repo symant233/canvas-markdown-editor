@@ -1,4 +1,4 @@
-/** 支持的块类型：段落、标题、列表、代码块、引用、分割线等 */
+/** 支持的块类型：段落、标题、列表、代码块、引用、分割线、表格等 */
 export type BlockType =
   | 'paragraph'
   | 'heading-1'
@@ -12,7 +12,24 @@ export type BlockType =
   | 'task-list'
   | 'code-block'
   | 'blockquote'
-  | 'hr';
+  | 'hr'
+  | 'table';
+
+export type TableAlignment = 'left' | 'center' | 'right' | 'none';
+
+export interface TableCell {
+  rawText: string;
+  inlines: InlineSegment[];
+  sourceToVisual: number[];
+  visualToSource: number[];
+}
+
+export interface TableData {
+  headers: TableCell[];
+  alignments: TableAlignment[];
+  rows: TableCell[][];
+  originalSeparator: string;
+}
 
 /** 内联样式标记：对应 **bold**、*italic*、`code`、~~strikethrough~~、++underline++、==highlight== 等 */
 export interface InlineStyle {
@@ -32,6 +49,15 @@ export interface InlineSegment {
   style: InlineStyle;
 }
 
+/** 表格单元格的布局信息 */
+export interface TableCellLayout {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  lines: LineLayout[];
+}
+
 /** 布局层级：BlockLayout（块）→ LineLayout（行）→ SegmentLayout（段），描述渲染时的几何信息 */
 export interface BlockLayout {
   x: number;
@@ -39,6 +65,10 @@ export interface BlockLayout {
   width: number;
   height: number;
   lines: LineLayout[];
+  /** 表格单元格布局：tableCells[row][col]，row=-1 的表头存在 tableCells[0] */
+  tableCells?: TableCellLayout[][];
+  /** 表格各列宽度 */
+  tableColumnWidths?: number[];
 }
 
 export interface LineLayout {
@@ -71,12 +101,16 @@ export interface Block {
   language?: string;
   /** 任务列表的勾选状态 */
   checked?: boolean;
+  /** 表格数据（仅 type='table' 时有效） */
+  tableData?: TableData;
 }
 
 /** 光标/选区均在 source 空间（即 rawText 的字符偏移），与 Markdown 标记符一致 */
 export interface CursorPosition {
   blockId: string;
   offset: number;
+  /** 表格单元格定位：row=-1 表示表头行 */
+  tableCell?: { row: number; col: number };
 }
 
 /** 选区：anchor 与 focus 均为 source 空间（rawText 偏移） */

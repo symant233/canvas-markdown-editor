@@ -18,6 +18,7 @@ const BLOCK_FONT_CONFIG: Record<BlockType, { size: number; weight: string }> = {
   'bullet-list': { size: 16, weight: 'normal' },
   'ordered-list': { size: 16, weight: 'normal' },
   'task-list': { size: 16, weight: 'normal' },
+  'table': { size: 14, weight: 'normal' },
   'code-block': { size: 14, weight: 'normal' },
   'blockquote': { size: 16, weight: 'normal' },
   'hr': { size: 16, weight: 'normal' },

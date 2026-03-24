@@ -76,6 +76,10 @@ export class HitTester {
     const block = this.hitBlock(sceneY, blocks);
     if (!block?.layout) return null;
 
+    if (block.type === 'table' && block.layout.tableCells && block.tableData) {
+      return this.hitTableCell(sceneX, sceneY, block);
+    }
+
     const line = this.findLine(sceneY, block);
     if (!line) {
       if (sceneY < block.layout.y) {
@@ -90,6 +94,61 @@ export class HitTester {
     }
 
     return this.hitPositionInLine(sceneX, line, block);
+  }
+
+  /**
+   * 命中单元格后按纵坐标在 cell.lines 中选行（含行间缝隙落在下一行的规则），再累加行前 visual 并用该格 visualToSource 得到 source offset。
+   */
+  private hitTableCell(sceneX: number, sceneY: number, block: Block): CursorPosition {
+    const cells = block.layout!.tableCells!;
+    const data = block.tableData!;
+
+    for (let r = 0; r < cells.length; r++) {
+      for (let c = 0; c < cells[r].length; c++) {
+        const cell = cells[r][c];
+        if (sceneX >= cell.x && sceneX < cell.x + cell.width &&
+            sceneY >= cell.y && sceneY < cell.y + cell.height) {
+          const tableRow = r === 0 ? -1 : r - 1;
+          const cellData = r === 0 ? data.headers[c] : data.rows[r - 1]?.[c];
+          if (!cellData || cell.lines.length === 0) {
+            return { blockId: block.id, offset: 0, tableCell: { row: tableRow, col: c } };
+          }
+
+          let targetLine = cell.lines[0];
+          for (const ln of cell.lines) {
+            if (sceneY >= ln.y && sceneY < ln.y + ln.height) {
+              targetLine = ln;
+              break;
+            }
+            if (sceneY >= ln.y + ln.height) targetLine = ln;
+          }
+
+          let visualOffset = 0;
+          for (const ln of cell.lines) {
+            if (ln === targetLine) break;
+            for (const seg of ln.segments) visualOffset += seg.text.length;
+          }
+
+          for (const seg of targetLine.segments) {
+            if (sceneX < seg.x) {
+              const sourceOffset = cellData.visualToSource[visualOffset] ?? 0;
+              return { blockId: block.id, offset: sourceOffset, tableCell: { row: tableRow, col: c } };
+            }
+            if (sceneX <= seg.x + seg.width) {
+              const charIdx = this.getCharIndexAtX(seg.text, seg.x, sceneX, 'table', seg.style);
+              const sourceOffset = cellData.visualToSource[visualOffset + charIdx] ?? 0;
+              return { blockId: block.id, offset: sourceOffset, tableCell: { row: tableRow, col: c } };
+            }
+            visualOffset += seg.text.length;
+          }
+
+          const sourceOffset = cellData.visualToSource[visualOffset] ?? cellData.rawText.length;
+          return { blockId: block.id, offset: sourceOffset, tableCell: { row: tableRow, col: c } };
+        }
+      }
+    }
+
+    return { blockId: block.id, offset: 0, tableCell: { row: -1, col: 0 } };
   }
 
   /** 在块的布局行中找到 sceneY 所在行 */

@@ -10,7 +10,7 @@ import { EventDispatcher, type RenderRequest } from '../core/EventDispatcher';
 import { InputManager } from '../core/InputManager';
 import { blocksToMarkdown } from '../core/BlockSerializer';
 import { parseInlineMarkdown } from '../core/InlineParser';
-import type { CursorPosition } from '../core/types';
+import type { Block, CursorPosition } from '../core/types';
 
 // ─── 核心模块单例（模块作用域创建，保证只实例化一次） ───
 
@@ -295,6 +295,7 @@ export class EditorManager {
       const adjustedCursor: CursorPosition = {
         blockId: cursor.blockId,
         offset: cursor.offset + compositionText.length,
+        tableCell: cursor.tableCell,
       };
       selectionRenderer.render(ctx, blockStore.getBlocks(), adjustedCursor, null, window.devicePixelRatio, scrollY);
       selectionRenderer.renderCompositionUnderline(ctx, blockStore.getBlocks(), cursor, compositionText.length, window.devicePixelRatio, scrollY);
@@ -322,9 +323,8 @@ export class EditorManager {
   }
 
   /**
-   * 组合输入期间临时将 compositionText 注入 block 的 rawText，
-   * 重新解析和布局以获得正确的换行和文字位移效果。
-   * 返回的 cleanup 函数恢复原始状态。
+   * 组合输入期间临时注入 compositionText 并 reflow，使画布上换行与光标位置与 IME 一致。
+   * 表单元格路径改注入当前 cell.rawText，并保存/恢复 cell 与 block.rawText；cleanup 还原 layout 快照与 compositionActive。
    */
   private applyCompositionForRendering(): () => void {
     const { compositionText, cursor } = dispatcher.getState();
@@ -333,16 +333,48 @@ export class EditorManager {
     const block = blockStore.getBlock(cursor.blockId);
     if (!block) return () => {};
 
-    const savedRawText = block.rawText;
-    const savedInlines = block.inlines;
-    const savedSTV = block.sourceToVisual;
-    const savedVTS = block.visualToSource;
-
     const blocks = blockStore.getBlocks();
     const blockIdx = blocks.indexOf(block);
     if (blockIdx < 0) return () => {};
 
     const savedLayouts = blocks.slice(blockIdx).map(b => b.layout);
+
+    if (cursor.tableCell && block.tableData) {
+      const cell = blockStore.getTableCell(block, cursor.tableCell.row, cursor.tableCell.col);
+      if (!cell) return () => {};
+      const savedCellRaw = cell.rawText;
+      const savedCellInlines = cell.inlines;
+      const savedCellSTV = cell.sourceToVisual;
+      const savedCellVTS = cell.visualToSource;
+      const savedBlockRaw = block.rawText;
+
+      cell.rawText = savedCellRaw.substring(0, cursor.offset) + compositionText + savedCellRaw.substring(cursor.offset);
+      const cellResult = parseInlineMarkdown(cell.rawText);
+      cell.inlines = cellResult.segments;
+      cell.sourceToVisual = cellResult.sourceToVisual;
+      cell.visualToSource = cellResult.visualToSource;
+
+      layoutEngine.reflowFrom(blocks, Math.max(0, blockIdx), this.getContainerSize().width);
+      this.scrollToCompositionCursorInTable(block, cursor.tableCell!, cursor.offset + compositionText.length);
+      this.compositionActive = true;
+
+      return () => {
+        cell.rawText = savedCellRaw;
+        cell.inlines = savedCellInlines;
+        cell.sourceToVisual = savedCellSTV;
+        cell.visualToSource = savedCellVTS;
+        block.rawText = savedBlockRaw;
+        for (let i = 0; i < savedLayouts.length; i++) {
+          blocks[blockIdx + i].layout = savedLayouts[i];
+        }
+        this.compositionActive = false;
+      };
+    }
+
+    const savedRawText = block.rawText;
+    const savedInlines = block.inlines;
+    const savedSTV = block.sourceToVisual;
+    const savedVTS = block.visualToSource;
 
     block.rawText = savedRawText.substring(0, cursor.offset) + compositionText + savedRawText.substring(cursor.offset);
     const parseResult = parseInlineMarkdown(block.rawText);
@@ -352,6 +384,7 @@ export class EditorManager {
 
     layoutEngine.reflowFrom(blocks, Math.max(0, blockIdx), this.getContainerSize().width);
 
+    this.scrollToCompositionCursor(block, cursor.offset + compositionText.length);
     this.compositionActive = true;
 
     return () => {
@@ -368,10 +401,48 @@ export class EditorManager {
     };
   }
 
+  /** 非表块 IME 组合：用块主 layout 将组合末端 visual 所在行滚入视口。 */
+  private scrollToCompositionCursor(block: Block, adjustedOffset: number) {
+    if (!block.layout || block.layout.lines.length === 0) return;
+    const visualOffset = blockStore.sourceToVisual(block, adjustedOffset);
+    this.scrollToCursorLine(block.layout.lines, visualOffset);
+  }
+
+  /** 表单元格内 IME 组合：用 tableCells 子 layout 与 tableCellSourceToVisual 定位行并滚动。 */
+  private scrollToCompositionCursorInTable(block: Block, tableCell: { row: number; col: number }, adjustedOffset: number) {
+    if (!block.layout?.tableCells) return;
+    const layoutRow = tableCell.row === -1 ? 0 : tableCell.row + 1;
+    const cellLayout = block.layout.tableCells[layoutRow]?.[tableCell.col];
+    if (!cellLayout || cellLayout.lines.length === 0) return;
+    const visualOffset = blockStore.tableCellSourceToVisual(block, tableCell.row, tableCell.col, adjustedOffset);
+    this.scrollToCursorLine(cellLayout.lines, visualOffset);
+  }
+
   /**
-   * 将隐藏 textarea 移动到光标像素位置，使 IME 候选窗紧贴光标所在行。
-   * 组合输入期间跳过更新，避免候选窗跳动。
+   * 由 visualOffset 解析目标行，若行顶/底超出容器视口则通过 handleScrollbarScroll 修正 scrollY（组合预览与编辑共用）。
    */
+  private scrollToCursorLine(lines: readonly { y: number; height: number; segments: readonly { text: string }[]; newlineBefore?: boolean }[], visualOffset: number) {
+    const viewportH = this.container?.clientHeight ?? 600;
+    const { scrollY } = dispatcher.getState();
+
+    let charCount = 0;
+    let targetLine = lines[lines.length - 1];
+    for (const line of lines) {
+      if (line.newlineBefore) charCount++;
+      let lineLen = 0;
+      for (const seg of line.segments) lineLen += seg.text.length;
+      if (visualOffset <= charCount + lineLen) { targetLine = line; break; }
+      charCount += lineLen;
+    }
+
+    if (targetLine.y + targetLine.height > scrollY + viewportH) {
+      const newScrollY = targetLine.y + targetLine.height - viewportH + 10;
+      dispatcher.handleScrollbarScroll(Math.max(0, newScrollY));
+    } else if (targetLine.y < scrollY) {
+      dispatcher.handleScrollbarScroll(targetLine.y);
+    }
+  }
+
   private updateTextareaPosition() {
     if (this.inputManager?.composing) return;
     const { cursor, scrollY } = dispatcher.getState();

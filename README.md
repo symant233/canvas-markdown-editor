@@ -73,6 +73,8 @@ src/
 │   ├── EditorManager.ts             # 画布管理类 + 核心模块单例
 ├── components/
 │   └── Scrollbar.tsx                # 自定义滚动条组件
+├── config/
+│   └── colors.ts                    # 编辑器颜色常量配置
 ├── core/
 │   ├── types.ts                     # 核心类型定义
 │   ├── BlockStore.ts                # 块数据管理器
@@ -111,7 +113,7 @@ interface Block {
 }
 ```
 
-支持的块类型：`paragraph`、`heading-1/2/3/4/5/6`、`bullet-list`、`ordered-list`、`task-list`、`code-block`、`blockquote`、`hr`
+支持的块类型：`paragraph`、`heading-1/2/3/4/5/6`、`bullet-list`、`ordered-list`、`task-list`、`code-block`、`blockquote`、`table`、`hr`
 
 ### Source/Visual 双坐标空间
 
@@ -213,6 +215,7 @@ sequenceDiagram
 | bullet-list | 16px normal | 圆点前缀 + 缩进 |
 | ordered-list | 16px normal | 递增数字前缀 + 缩进 |
 | task-list | 16px normal | 可点击 checkbox + 缩进 |
+| table | 14px normal | 表头灰色背景 + 边框 + 单元格内自动换行 + 对齐 |
 | blockquote | 16px normal | 左侧 3px 竖线 + 灰色文字 |
 | hr | 无文字 | 居中水平线 |
 
@@ -266,7 +269,7 @@ flowchart TD
 | `Ctrl+B` | `**text**` | **加粗** |
 | `Ctrl+I` | `*text*` | *斜体* |
 | — | `***text***` | ***粗斜体*** |
-| `Ctrl+U` | `++text++` | 下划线 |
+| `Ctrl+U` | `++text++` | ++下划线++ |
 | `Ctrl+Shift+S` | `~~text~~` | ~~删除线~~ |
 | — | `==text==` | ==高亮== |
 | — | `\*` `\[` 等 | 反斜杠转义 |

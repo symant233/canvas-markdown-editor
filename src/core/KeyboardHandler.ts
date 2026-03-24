@@ -18,7 +18,10 @@ export class KeyboardHandler {
     this.blockStore = blockStore;
   }
 
-  /** Ctrl+A/B/I 全选/加粗/斜体；方向键、Home/End、Backspace/Delete/Enter/Tab 分发到对应处理 */
+  /**
+   * Ctrl+A 全选；Ctrl+B/I/U、Ctrl+Shift+S 切换 **、*、++、~~ 等行内标记；
+   * 方向键、Home/End、Backspace/Delete/Enter/Tab 分发到对应处理。
+   */
   handleKeyDown(
     e: KeyboardEvent,
     cursor: CursorPosition,
@@ -108,6 +111,34 @@ export class KeyboardHandler {
       return { type: 'moveCursor', cursor: newCursor, selection: null };
     }
 
+    /**
+     * 表格单元格内左右键：offset 越界时交给 handleTabInTable 切换邻格；格内则按单元格 visual 映射跳过不可见的 Markdown 标记。
+     */
+    if (cursor.tableCell && block.tableData) {
+      const cellLen = this.blockStore.getTableCellRawTextLength(block, cursor.tableCell.row, cursor.tableCell.col);
+      let newOff = cursor.offset + direction;
+
+      if (newOff < 0 || newOff > cellLen) {
+        const result = this.handleTabInTable(cursor, block, direction === -1);
+        return result;
+      }
+
+      const oldVis = this.blockStore.tableCellSourceToVisual(block, cursor.tableCell.row, cursor.tableCell.col, cursor.offset);
+      if (direction === 1) {
+        while (newOff <= cellLen && this.blockStore.tableCellSourceToVisual(block, cursor.tableCell.row, cursor.tableCell.col, newOff) === oldVis) newOff++;
+        if (newOff > cellLen) newOff = cellLen;
+      } else {
+        while (newOff >= 0 && this.blockStore.tableCellSourceToVisual(block, cursor.tableCell.row, cursor.tableCell.col, newOff) === oldVis) newOff--;
+        if (newOff < 0) newOff = 0;
+      }
+
+      newCursor = { blockId: cursor.blockId, offset: newOff, tableCell: cursor.tableCell };
+      const newSelection = extendSelection
+        ? { anchor: currentSelection?.anchor ?? cursor, focus: newCursor }
+        : null;
+      return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
+    }
+
     if (block.type === 'hr') {
       const target = direction === 1
         ? this.blockStore.getNextBlock(cursor.blockId)
@@ -191,6 +222,24 @@ export class KeyboardHandler {
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block?.layout) return { type: 'none' };
 
+    /**
+     * 表格内上下键：按列在行间移动；目标格较短时将 offset 钳到该格长度，避免越界。
+     */
+    if (cursor.tableCell && block.tableData) {
+      const { row, col } = cursor.tableCell;
+      const newRow = row + direction;
+      if (newRow < -1 || newRow >= block.tableData.rows.length) {
+        return { type: 'none' };
+      }
+      const cellLen = this.blockStore.getTableCellRawTextLength(block, newRow, col);
+      const newOffset = Math.min(cursor.offset, cellLen);
+      const newCursor: CursorPosition = { blockId: block.id, offset: newOffset, tableCell: { row: newRow, col } };
+      const newSelection = extendSelection
+        ? { anchor: currentSelection?.anchor ?? cursor, focus: newCursor }
+        : null;
+      return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
+    }
+
     if (block.type === 'hr') {
       const target = direction === -1
         ? this.blockStore.getPrevBlock(cursor.blockId)
@@ -262,7 +311,10 @@ export class KeyboardHandler {
     return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
   }
 
-  /** Home/End：行首/行尾定位 */
+  /**
+   * Home/End：按 layout 将光标移到当前逻辑行首/行尾（source↔visual 转换）。
+   * 表内则跳到当前单元格 raw 的首/尾，不按单元格内软换行再切分。
+   */
   private moveCursorToLineEdge(
     cursor: CursorPosition,
     edge: 'start' | 'end',
@@ -271,6 +323,19 @@ export class KeyboardHandler {
   ): KeyboardAction {
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block?.layout) return { type: 'none' };
+
+    /**
+     * 表格内 Home/End：跳到当前单元格 raw 首尾，不按单元格内软换行再切分。
+     */
+    if (cursor.tableCell && block.tableData) {
+      const cellLen = this.blockStore.getTableCellRawTextLength(block, cursor.tableCell.row, cursor.tableCell.col);
+      const newOffset = edge === 'start' ? 0 : cellLen;
+      const newCursor: CursorPosition = { blockId: cursor.blockId, offset: newOffset, tableCell: cursor.tableCell };
+      const newSelection = extendSelection
+        ? { anchor: currentSelection?.anchor ?? cursor, focus: newCursor }
+        : null;
+      return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
+    }
 
     const visualOffset = this.blockStore.sourceToVisual(block, cursor.offset);
     const { lineIndex } = this.getLineInfo(block, visualOffset);
@@ -288,7 +353,12 @@ export class KeyboardHandler {
     return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
   }
 
-  /** hr 块：删除整块并跳到相邻块；块首非 paragraph：降级为 paragraph；块首 paragraph：合并前块或删前块（前块为 hr 时） */
+  /**
+   * 有选区时交由上层 delete；否则：
+   * 表内仅删格内字符，offset 为 0 时不合并块；
+   * hr 块：删整块并将光标落到前块末尾（无前块则留在原位 offset 0）；
+   * 块首非 paragraph：降级为 paragraph；块首 paragraph：前块为 hr 则删 hr，否则 mergeWithPrev。
+   */
   private handleBackspace(
     cursor: CursorPosition,
     selection: SelectionRange | null,
@@ -299,6 +369,15 @@ export class KeyboardHandler {
 
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block) return { type: 'none' };
+
+    /**
+     * 表单元格内退格仅删格内字符；offset 为 0 时不向上合并块，以免破坏表格块结构。
+     */
+    if (cursor.tableCell && block.tableData) {
+      if (cursor.offset === 0) return { type: 'none' };
+      this.blockStore.deleteCharAt(cursor.blockId, cursor.offset - 1, cursor.tableCell);
+      return { type: 'dataChanged', cursor: { blockId: cursor.blockId, offset: cursor.offset - 1, tableCell: cursor.tableCell } };
+    }
 
     if (block.type === 'hr') {
       const prev = this.blockStore.getPrevBlock(cursor.blockId);
@@ -340,7 +419,12 @@ export class KeyboardHandler {
     };
   }
 
-  /** hr 块：删除整块；块末：下块为 hr 则删之，否则合并下一块内容到当前块 */
+  /**
+   * 有选区时交由上层 delete；否则：
+   * 表内只删当前格，已在格尾则 noop；
+   * hr 块：删整块，光标移到下一块开头（无则 offset 0）；
+   * 块末：下一块为 hr 则删 hr；否则将下块 raw 拼入当前块并移除下块。
+   */
   private handleDelete(
     cursor: CursorPosition,
     selection: SelectionRange | null,
@@ -351,6 +435,16 @@ export class KeyboardHandler {
 
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block) return { type: 'none' };
+
+    /**
+     * 表单元格内 Delete 只删当前格；光标已在格尾则不做任何事（不吞下一格）。
+     */
+    if (cursor.tableCell && block.tableData) {
+      const cellLen = this.blockStore.getTableCellRawTextLength(block, cursor.tableCell.row, cursor.tableCell.col);
+      if (cursor.offset >= cellLen) return { type: 'none' };
+      this.blockStore.deleteCharAt(cursor.blockId, cursor.offset, cursor.tableCell);
+      return { type: 'dataChanged', cursor };
+    }
 
     if (block.type === 'hr') {
       const next = this.blockStore.getNextBlock(cursor.blockId);
@@ -383,7 +477,10 @@ export class KeyboardHandler {
     return { type: 'dataChanged', cursor };
   }
 
-  /** 委托 blockStore.splitBlock 在光标处分块 */
+  /**
+   * 委托 blockStore.splitBlock 在光标处分块；有选区时先删选区。
+   * 光标在表单元格内时不 split，避免拆散表格块。
+   */
   private handleEnter(
     cursor: CursorPosition,
     selection: SelectionRange | null,
@@ -391,6 +488,9 @@ export class KeyboardHandler {
     if (selection) {
       return { type: 'delete' };
     }
+
+    /** 表内 Enter 不 splitBlock，避免把整张表拆成两个块。 */
+    if (cursor.tableCell) return { type: 'none' };
 
     const newCursor = this.blockStore.splitBlock(cursor);
     return { type: 'splitBlock', newCursor };
@@ -414,10 +514,18 @@ export class KeyboardHandler {
     };
   }
 
-  /** 普通块：加/减两空格；代码块：定位当前行后只缩进/反缩进该行 */
+  /**
+   * 表内：Tab/Shift+Tab 在单元格间移动光标；
+   * 代码块：见 handleTabInCodeBlock，只缩进/反缩进光标所在行；
+   * 普通块：行首加/减两空格（或一个制表符）。
+   */
   private handleTab(cursor: CursorPosition, shiftKey: boolean): KeyboardAction {
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block) return { type: 'none' };
+
+    if (cursor.tableCell && block.tableData) {
+      return this.handleTabInTable(cursor, block, shiftKey);
+    }
 
     if (block.type === 'code-block') {
       return this.handleTabInCodeBlock(cursor, block, shiftKey);
@@ -482,7 +590,10 @@ export class KeyboardHandler {
     return { type: 'none' };
   }
 
-  /** Ctrl+B/I：检查选区前后是否已有标记符，有则移除，无则添加 */
+  /**
+   * 行内标记切换：检查选区前后是否已有同一 marker（**、*、++、~~ 等），
+   * 有则成对移除，无则成对包裹；仅支持单块内选区。
+   */
   private toggleInlineFormat(
     _cursor: CursorPosition,
     selection: SelectionRange | null,
@@ -559,7 +670,45 @@ export class KeyboardHandler {
     return offset;
   }
 
-  /** 确保 anchor 在 focus 之前（按块顺序和 offset 比较） */
+  /**
+   * 表格内 Tab / Shift+Tab：在行内前进/后退列，到行尾则折到下一行首列（反向同理）；越出表范围则返回 none。
+   */
+  private handleTabInTable(cursor: CursorPosition, block: Block, shiftKey: boolean): KeyboardAction {
+    const data = block.tableData!;
+    const { row, col } = cursor.tableCell!;
+    const colCount = data.headers.length;
+    const totalRows = data.rows.length;
+
+    let newRow = row;
+    let newCol = col;
+
+    if (shiftKey) {
+      newCol--;
+      if (newCol < 0) {
+        newCol = colCount - 1;
+        newRow--;
+        if (newRow < -1) return { type: 'none' };
+      }
+    } else {
+      newCol++;
+      if (newCol >= colCount) {
+        newCol = 0;
+        newRow++;
+        if (newRow >= totalRows) return { type: 'none' };
+      }
+    }
+
+    const cell = this.blockStore.getTableCell(block, newRow, newCol);
+    const offset = cell ? cell.rawText.length : 0;
+
+    return {
+      type: 'moveCursor',
+      cursor: { blockId: block.id, offset, tableCell: { row: newRow, col: newCol } },
+      selection: null,
+    };
+  }
+
+  /** 确保 anchor 在 focus 之前（按块顺序与 offset 比较） */
   private normalizeSelection(
     sel: SelectionRange,
     blocks: readonly Block[],

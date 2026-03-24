@@ -2,7 +2,7 @@ import type { Block } from './types';
 
 /** 将 Block 数组序列化回 Markdown 文本 */
 export function blocksToMarkdown(blocks: readonly Block[]): string {
-  let orderedCounter = 0; // 追踪连续有序列表的计数器，非有序列表时重置
+  let orderedCounter = 0;
   return blocks.map(block => {
     if (block.type === 'ordered-list') {
       orderedCounter++;
@@ -22,6 +22,7 @@ export function blocksToMarkdown(blocks: readonly Block[]): string {
       case 'task-list': return `- [${block.checked ? 'x' : ' '}] ${block.rawText}`;
       case 'blockquote': return `> ${block.rawText}`;
       case 'code-block': return `\`\`\`${block.language || ''}\n${block.rawText}\n\`\`\``;
+      case 'table': return block.rawText;
       case 'hr': return '---';
       default: return block.rawText;
     }

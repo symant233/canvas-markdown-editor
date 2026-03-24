@@ -1,4 +1,4 @@
-import type { Block, BlockLayout, LineLayout, SegmentLayout } from './types';
+import type { Block, BlockLayout, LineLayout, SegmentLayout, TableCellLayout } from './types';
 import { TextMeasurer } from './TextMeasurer';
 
 /** 左/右内边距 */
@@ -80,6 +80,10 @@ export class LayoutEngine {
   private layoutBlock(block: Block, x: number, y: number, maxWidth: number): BlockLayout {
     if (block.type === 'hr') {
       return { x, y, width: maxWidth, height: HR_HEIGHT, lines: [] };
+    }
+
+    if (block.type === 'table' && block.tableData) {
+      return this.layoutTable(block, x, y, maxWidth);
     }
 
     let effectiveX = x;
@@ -182,6 +186,152 @@ export class LayoutEngine {
       width: effectiveWidth,
       height: totalHeight,
       lines,
+    };
+  }
+
+  private static readonly TABLE_CELL_PAD_X = 10;
+  private static readonly TABLE_CELL_PAD_Y = 6;
+
+  private layoutTable(block: Block, x: number, y: number, maxWidth: number): BlockLayout {
+    const data = block.tableData!;
+    const colCount = data.headers.length;
+    const { TABLE_CELL_PAD_X: PX, TABLE_CELL_PAD_Y: PY } = LayoutEngine;
+    const lineHeight = this.textMeasurer.getLineHeight('table');
+    const baseline = this.textMeasurer.getBaseline('table');
+
+    const allRows = [data.headers, ...data.rows];
+    const minColWidth = 60;
+
+    const naturalWidths = new Array<number>(colCount).fill(0);
+    for (const row of allRows) {
+      for (let c = 0; c < colCount; c++) {
+        const cell = row[c];
+        if (!cell) continue;
+        let w = 0;
+        for (const seg of cell.inlines) {
+          w += this.textMeasurer.measureWidth(seg.text, 'table', seg.style);
+        }
+        naturalWidths[c] = Math.max(naturalWidths[c], w + PX * 2);
+      }
+    }
+
+    const colWidths = new Array<number>(colCount).fill(minColWidth);
+    const totalMin = minColWidth * colCount;
+
+    if (totalMin >= maxWidth) {
+      const perCol = maxWidth / colCount;
+      for (let c = 0; c < colCount; c++) colWidths[c] = perCol;
+    } else {
+      const totalNatural = naturalWidths.reduce((s, w) => s + w, 0);
+      if (totalNatural <= maxWidth) {
+        const extra = (maxWidth - totalNatural) / colCount;
+        for (let c = 0; c < colCount; c++) colWidths[c] = naturalWidths[c] + extra;
+      } else {
+        let remaining = maxWidth - totalMin;
+        const surplusTotal = naturalWidths.reduce((s, w) => s + Math.max(0, w - minColWidth), 0);
+        if (surplusTotal > 0) {
+          for (let c = 0; c < colCount; c++) {
+            const surplus = Math.max(0, naturalWidths[c] - minColWidth);
+            colWidths[c] = minColWidth + surplus * (remaining / surplusTotal);
+          }
+        }
+      }
+    }
+
+    const tableCells: TableCellLayout[][] = [];
+    let currentY = y;
+
+    for (let r = 0; r < allRows.length; r++) {
+      const row = allRows[r];
+      let cellX = x;
+      const cellLayouts: TableCellLayout[] = [];
+      let maxCellLines = 1;
+
+      for (let c = 0; c < colCount; c++) {
+        const cell = row[c];
+        const cellLines: LineLayout[] = [];
+        const contentWidth = colWidths[c] - PX * 2;
+
+        if (cell) {
+          let currentLineSegs: SegmentLayout[] = [];
+          let lineXOff = 0;
+          let cellLineY = currentY + PY;
+
+          for (const seg of cell.inlines) {
+            if (seg.text.length === 0) continue;
+            const charWidths = this.textMeasurer.measureCharWidths(seg.text, 'table', seg.style);
+            let segStart = 0;
+
+            while (segStart < seg.text.length) {
+              let segEnd = segStart;
+              let width = 0;
+
+              while (segEnd < seg.text.length && lineXOff + width + charWidths[segEnd] <= contentWidth) {
+                width += charWidths[segEnd];
+                segEnd++;
+              }
+
+              if (segEnd === segStart && currentLineSegs.length === 0) {
+                width = charWidths[segEnd];
+                segEnd = segStart + 1;
+              }
+
+              if (segEnd > segStart) {
+                currentLineSegs.push({
+                  x: cellX + PX + lineXOff,
+                  width,
+                  text: seg.text.substring(segStart, segEnd),
+                  style: seg.style,
+                });
+                lineXOff += width;
+                segStart = segEnd;
+              }
+
+              if (segStart < seg.text.length) {
+                cellLines.push({ y: cellLineY, height: lineHeight, baseline, segments: currentLineSegs });
+                currentLineSegs = [];
+                lineXOff = 0;
+                cellLineY += lineHeight;
+              }
+            }
+          }
+
+          if (currentLineSegs.length > 0 || cellLines.length === 0) {
+            cellLines.push({ y: cellLineY, height: lineHeight, baseline, segments: currentLineSegs });
+          }
+        } else {
+          cellLines.push({ y: currentY + PY, height: lineHeight, baseline, segments: [] });
+        }
+
+        maxCellLines = Math.max(maxCellLines, cellLines.length);
+        cellLayouts.push({
+          x: cellX,
+          y: currentY,
+          width: colWidths[c],
+          height: 0,
+          lines: cellLines,
+        });
+
+        cellX += colWidths[c];
+      }
+
+      const rowHeight = maxCellLines * lineHeight + PY * 2;
+      for (const cl of cellLayouts) cl.height = rowHeight;
+
+      tableCells.push(cellLayouts);
+      currentY += rowHeight;
+    }
+
+    const totalHeight = currentY - y;
+
+    return {
+      x,
+      y,
+      width: maxWidth,
+      height: totalHeight,
+      lines: [],
+      tableCells,
+      tableColumnWidths: colWidths,
     };
   }
 }
