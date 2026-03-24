@@ -208,10 +208,16 @@ export class EditorManager {
   };
 
   private onPointerMove = (e: PointerEvent) => {
-    if (!dispatcher.getState().isDragging) return;
     const rect = this.selectionCanvas!.getBoundingClientRect();
     const { scrollY } = dispatcher.getState();
-    dispatcher.handlePointerMove(e.clientX - rect.left, e.clientY - rect.top + scrollY);
+    const sceneX = e.clientX - rect.left;
+    const sceneY = e.clientY - rect.top + scrollY;
+
+    const overCheckbox = dispatcher.checkHoverCheckbox(sceneX, sceneY);
+    this.selectionCanvas!.style.cursor = overCheckbox ? 'pointer' : 'text';
+
+    if (!dispatcher.getState().isDragging) return;
+    dispatcher.handlePointerMove(sceneX, sceneY);
   };
 
   private onPointerUp = () => {

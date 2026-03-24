@@ -13,6 +13,27 @@ export class HitTester {
     this.blockStore = blockStore;
   }
 
+  private static readonly CHECKBOX_INDENT = 24;
+  private static readonly CHECKBOX_SIZE = 14;
+  private static readonly CHECKBOX_PAD = 4;
+
+  /** 检测点击是否命中 task-list 的 checkbox 区域，返回对应 block 或 null */
+  hitCheckbox(sceneX: number, sceneY: number, blocks: readonly Block[]): Block | null {
+    const { CHECKBOX_INDENT: INDENT, CHECKBOX_SIZE: SIZE, CHECKBOX_PAD: PAD } = HitTester;
+    for (const block of blocks) {
+      if (block.type !== 'task-list' || !block.layout || block.layout.lines.length === 0) continue;
+      const firstLine = block.layout.lines[0];
+      const cx = block.layout.x - INDENT / 2 - SIZE / 2;
+      const textCenter = this.textMeasurer.getTextVisualCenter(block.type);
+      const cy = firstLine.y + textCenter - SIZE / 2;
+      if (sceneX >= cx - PAD && sceneX <= cx + SIZE + PAD &&
+          sceneY >= cy - PAD && sceneY <= cy + SIZE + PAD) {
+        return block;
+      }
+    }
+    return null;
+  }
+
   /** 找到 sceneY 所在的块；若不在任何块内则取最近的块 */
   hitBlock(sceneY: number, blocks: readonly Block[]): Block | null {
     if (blocks.length === 0) return null;

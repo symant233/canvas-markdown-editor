@@ -8,12 +8,16 @@ export interface FontConfig {
 }
 
 const BLOCK_FONT_CONFIG: Record<BlockType, { size: number; weight: string }> = {
-  'heading-1': { size: 32, weight: 'bold' },
-  'heading-2': { size: 24, weight: 'bold' },
-  'heading-3': { size: 20, weight: 'bold' },
+  'heading-1': { size: 40, weight: 'bold' },
+  'heading-2': { size: 32, weight: 'bold' },
+  'heading-3': { size: 28, weight: 'bold' },
+  'heading-4': { size: 24, weight: 'bold' },
+  'heading-5': { size: 20, weight: 'bold' },
+  'heading-6': { size: 16, weight: 'bold' },
   'paragraph': { size: 16, weight: 'normal' },
   'bullet-list': { size: 16, weight: 'normal' },
   'ordered-list': { size: 16, weight: 'normal' },
+  'task-list': { size: 16, weight: 'normal' },
   'code-block': { size: 14, weight: 'normal' },
   'blockquote': { size: 16, weight: 'normal' },
   'hr': { size: 16, weight: 'normal' },
@@ -99,6 +103,21 @@ export class TextMeasurer {
 
   getFontSize(blockType: BlockType): number {
     return BLOCK_FONT_CONFIG[blockType].size;
+  }
+
+  /** 获取文本的垂直视觉中心（相对于行顶部），基于字体实际 ascent/descent 度量 */
+  getTextVisualCenter(blockType: BlockType): number {
+    const cacheKey = `__vcenter__|${blockType}`;
+    const cached = this.cache.get(cacheKey);
+    if (cached !== undefined) return cached;
+
+    const font = this.buildFont(blockType, { bold: false, italic: false, code: false, strikethrough: false, underline: false, highlight: false });
+    this.ctx.font = font;
+    const metrics = this.ctx.measureText('Mg啊');
+    const baseline = this.getBaseline(blockType);
+    const center = baseline - (metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2;
+    this.cache.set(cacheKey, center);
+    return center;
   }
 
   clearCache() {

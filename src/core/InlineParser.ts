@@ -21,9 +21,47 @@ export function parseInlineMarkdown(text: string): ParseResult {
   let i = 0;
 
   while (i < text.length) {
+    /* 反斜杠转义：\后跟 Markdown 特殊字符时，\ 不可见，后面字符作为纯文本 */
+    if (text[i] === '\\' && i + 1 < text.length && '\\`*_{}[]()#+-.!|~>='.includes(text[i + 1])) {
+      sourceToVisual[i] = visualOffset;
+      i += 1;
+      const escaped = text[i];
+      sourceToVisual[i] = visualOffset;
+      visualToSource.push(i);
+      visualOffset++;
+      segments.push({ text: escaped, style: { ...DEFAULT_INLINE_STYLE } });
+      i += 1;
+      continue;
+    }
+
+    /* ***粗斜体***：必须在 ** 和 * 之前匹配 */
+    if (text.startsWith('***', i)) {
+      const end = text.indexOf('***', i + 3);
+      if (end !== -1 && end > i + 3) {
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        sourceToVisual[i + 2] = visualOffset;
+        i += 3;
+
+        const content = text.substring(i, end);
+        segments.push({ text: content, style: { ...DEFAULT_INLINE_STYLE, bold: true, italic: true } });
+        for (let j = 0; j < content.length; j++) {
+          sourceToVisual[i + j] = visualOffset;
+          visualToSource.push(i + j);
+          visualOffset++;
+        }
+        i = end;
+
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        sourceToVisual[i + 2] = visualOffset;
+        i += 3;
+        continue;
+      }
+    }
+
     if (text.startsWith('**', i)) {
       const end = text.indexOf('**', i + 2);
-      /* end > i + 2：防止匹配空内联标记（如 ** **）导致内容消失 */
       if (end !== -1 && end > i + 2) {
         sourceToVisual[i] = visualOffset;
         sourceToVisual[i + 1] = visualOffset;
@@ -47,7 +85,6 @@ export function parseInlineMarkdown(text: string): ParseResult {
 
     if (text[i] === '*' && text[i + 1] !== '*') {
       const end = text.indexOf('*', i + 1);
-      /* end > i + 1：同上，避免 * * 空匹配 */
       if (end !== -1 && end > i + 1 && (end + 1 >= text.length || text[end + 1] !== '*')) {
         sourceToVisual[i] = visualOffset;
         i += 1;
@@ -186,10 +223,33 @@ export function parseInlineMarkdown(text: string): ParseResult {
       }
     }
 
-    /* 纯文本段：从 i 起向后扫描，直到遇到 *、`、~~、++ 或结尾，整段作为无样式片段 */
+    if (text.startsWith('==', i)) {
+      const end = text.indexOf('==', i + 2);
+      if (end !== -1 && end > i + 2) {
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        i += 2;
+
+        const content = text.substring(i, end);
+        segments.push({ text: content, style: { ...DEFAULT_INLINE_STYLE, highlight: true } });
+        for (let j = 0; j < content.length; j++) {
+          sourceToVisual[i + j] = visualOffset;
+          visualToSource.push(i + j);
+          visualOffset++;
+        }
+        i = end;
+
+        sourceToVisual[i] = visualOffset;
+        sourceToVisual[i + 1] = visualOffset;
+        i += 2;
+        continue;
+      }
+    }
+
     let plainEnd = i + 1;
     while (plainEnd < text.length) {
-      if (text[plainEnd] === '*' || text[plainEnd] === '`' || text.startsWith('~~', plainEnd) || text.startsWith('++', plainEnd)) {
+      if (text[plainEnd] === '*' || text[plainEnd] === '`' || text[plainEnd] === '\\' ||
+          text.startsWith('~~', plainEnd) || text.startsWith('++', plainEnd) || text.startsWith('==', plainEnd)) {
         break;
       }
       plainEnd++;

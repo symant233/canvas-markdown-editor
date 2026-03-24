@@ -85,7 +85,7 @@ export class LayoutEngine {
     let effectiveX = x;
     let effectiveWidth = maxWidth;
 
-    if (block.type === 'bullet-list' || block.type === 'ordered-list') {
+    if (block.type === 'bullet-list' || block.type === 'ordered-list' || block.type === 'task-list') {
       effectiveX = x + LIST_INDENT;
       effectiveWidth = maxWidth - LIST_INDENT;
     } else if (block.type === 'blockquote') {

@@ -4,19 +4,24 @@ export type BlockType =
   | 'heading-1'
   | 'heading-2'
   | 'heading-3'
+  | 'heading-4'
+  | 'heading-5'
+  | 'heading-6'
   | 'bullet-list'
   | 'ordered-list'
+  | 'task-list'
   | 'code-block'
   | 'blockquote'
   | 'hr';
 
-/** 内联样式标记：对应 **bold**、*italic*、`code`、~~strikethrough~~、++underline++ 等 */
+/** 内联样式标记：对应 **bold**、*italic*、`code`、~~strikethrough~~、++underline++、==highlight== 等 */
 export interface InlineStyle {
   bold: boolean;
   italic: boolean;
   code: boolean;
   strikethrough: boolean;
   underline: boolean;
+  highlight: boolean;
   link?: string;
   color?: string;
 }
@@ -64,6 +69,8 @@ export interface Block {
   visualToSource: number[];
   /** 代码块的编程语言（从 ```lang 标记中提取） */
   language?: string;
+  /** 任务列表的勾选状态 */
+  checked?: boolean;
 }
 
 /** 光标/选区均在 source 空间（即 rawText 的字符偏移），与 Markdown 标记符一致 */
@@ -84,6 +91,7 @@ export const DEFAULT_INLINE_STYLE: InlineStyle = {
   code: false,
   strikethrough: false,
   underline: false,
+  highlight: false,
 };
 
 /** 工厂函数：生成带唯一 id 的 Block，其余字段由参数传入 */

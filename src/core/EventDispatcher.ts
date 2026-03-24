@@ -91,6 +91,15 @@ export class EventDispatcher {
   // ─── 指针事件 ───
 
   handlePointerDown(sceneX: number, sceneY: number) {
+    const checkboxBlock = this.hitTester.hitCheckbox(sceneX, sceneY, this.blockStore.getBlocks());
+    if (checkboxBlock) {
+      checkboxBlock.checked = !checkboxBlock.checked;
+      this.blockStore.reparseBlock(checkboxBlock);
+      this.emit({ type: 'full' });
+      this.focusInput();
+      return;
+    }
+
     const pos = this.hitTester.hitPosition(sceneX, sceneY, this.blockStore.getBlocks());
     if (pos) {
       this.state.cursor = pos;
@@ -405,6 +414,11 @@ export class EventDispatcher {
     const lastBlock = blocks[blocks.length - 1];
     if (!lastBlock?.layout) return 0;
     return Math.max(0, lastBlock.layout.y + lastBlock.layout.height - this.getViewportHeight() + 40);
+  }
+
+  /** 检测悬停是否在 checkbox 上，返回是否需要显示 pointer 光标 */
+  checkHoverCheckbox(sceneX: number, sceneY: number): boolean {
+    return this.hitTester.hitCheckbox(sceneX, sceneY, this.blockStore.getBlocks()) !== null;
   }
 
   private emit(request: RenderRequest) {

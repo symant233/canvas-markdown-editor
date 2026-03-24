@@ -14,8 +14,12 @@ export function blocksToMarkdown(blocks: readonly Block[]): string {
       case 'heading-1': return `# ${block.rawText}`;
       case 'heading-2': return `## ${block.rawText}`;
       case 'heading-3': return `### ${block.rawText}`;
+      case 'heading-4': return `#### ${block.rawText}`;
+      case 'heading-5': return `##### ${block.rawText}`;
+      case 'heading-6': return `###### ${block.rawText}`;
       case 'bullet-list': return `- ${block.rawText}`;
       case 'ordered-list': return `${orderedCounter}. ${block.rawText}`;
+      case 'task-list': return `- [${block.checked ? 'x' : ' '}] ${block.rawText}`;
       case 'blockquote': return `> ${block.rawText}`;
       case 'code-block': return `\`\`\`${block.language || ''}\n${block.rawText}\n\`\`\``;
       case 'hr': return '---';

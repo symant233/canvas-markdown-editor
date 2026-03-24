@@ -128,7 +128,7 @@ export class BlockStore {
       return { blockId: block.id, offset: cursor.offset + 1 };
     }
 
-    const continuableTypes = new Set(['bullet-list', 'ordered-list']);
+    const continuableTypes = new Set(['bullet-list', 'ordered-list', 'task-list']);
     const continueType = continuableTypes.has(block.type) ? block.type : 'paragraph';
 
     if (continuableTypes.has(block.type) && beforeRaw.length === 0 && afterRaw.length === 0) {
@@ -149,6 +149,9 @@ export class BlockStore {
     this.reparseBlock(block);
 
     const newBlock = createBlock(continueType, afterRaw, [{ text: '', style: { ...DEFAULT_INLINE_STYLE } }]);
+    if (continueType === 'task-list') {
+      newBlock.checked = block.checked ?? false;
+    }
     this.reparseBlock(newBlock);
 
     this.blocks.splice(idx + 1, 0, newBlock);

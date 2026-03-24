@@ -111,7 +111,7 @@ interface Block {
 }
 ```
 
-支持的块类型：`paragraph`、`heading-1/2/3`、`bullet-list`、`ordered-list`、`code-block`、`blockquote`、`hr`
+支持的块类型：`paragraph`、`heading-1/2/3/4/5/6`、`bullet-list`、`ordered-list`、`task-list`、`code-block`、`blockquote`、`hr`
 
 ### Source/Visual 双坐标空间
 
@@ -202,13 +202,17 @@ sequenceDiagram
 
 | 块类型 | 字体 | 特殊绘制 |
 |--------|------|----------|
-| heading-1 | 32px bold | 大号加粗标题 |
-| heading-2 | 24px bold | 中号加粗标题 |
-| heading-3 | 20px bold | 小号加粗标题 |
+| heading-1 | 40px bold | 大号加粗标题 + 底部分割线 |
+| heading-2 | 32px bold | 中号加粗标题 + 底部分割线 |
+| heading-3 | 28px bold | 小号加粗标题 |
+| heading-4 | 24px bold | 加粗标题 |
+| heading-5 | 20px bold | 加粗标题 |
+| heading-6 | 16px bold | 加粗标题 + 灰色文字 |
 | paragraph | 16px normal | 内联样式混排 |
 | code-block | 14px monospace | 圆角背景矩形 + 等宽字体 |
 | bullet-list | 16px normal | 圆点前缀 + 缩进 |
 | ordered-list | 16px normal | 递增数字前缀 + 缩进 |
+| task-list | 16px normal | 可点击 checkbox + 缩进 |
 | blockquote | 16px normal | 左侧 3px 竖线 + 灰色文字 |
 | hr | 无文字 | 居中水平线 |
 
@@ -247,10 +251,9 @@ flowchart TD
 
 | 输入 | 转换为 |
 |------|--------|
-| `# ` | heading-1 |
-| `## ` | heading-2 |
-| `### ` | heading-3 |
+| `# ` ~ `###### ` | heading-1 ~ heading-6 |
 | `- ` 或 `* ` | bullet-list |
+| `- [ ] ` 或 `- [x] ` | task-list（可点击 checkbox） |
 | `1. ` | ordered-list |
 | `> ` | blockquote |
 | `---` | hr |
@@ -262,8 +265,11 @@ flowchart TD
 |--------|---------------|------|
 | `Ctrl+B` | `**text**` | **加粗** |
 | `Ctrl+I` | `*text*` | *斜体* |
+| — | `***text***` | ***粗斜体*** |
 | `Ctrl+U` | `++text++` | 下划线 |
 | `Ctrl+Shift+S` | `~~text~~` | ~~删除线~~ |
+| — | `==text==` | ==高亮== |
+| — | `\*` `\[` 等 | 反斜杠转义 |
 
 ### 代码块特殊行为
 

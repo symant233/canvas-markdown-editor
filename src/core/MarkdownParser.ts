@@ -36,8 +36,27 @@ export class MarkdownParser {
         const match = line.match(/^\d+\.\s(.*)$/);
         blocks.push(this.createBlockParsed('ordered-list', match ? match[1] : line));
         i++;
+      } else if (line.startsWith('- [x] ') || line.startsWith('- [X] ')) {
+        const block = this.createBlockParsed('task-list', line.substring(6));
+        block.checked = true;
+        blocks.push(block);
+        i++;
+      } else if (line.startsWith('- [ ] ')) {
+        const block = this.createBlockParsed('task-list', line.substring(6));
+        block.checked = false;
+        blocks.push(block);
+        i++;
       } else if (line.startsWith('- ') || line.startsWith('* ')) {
         blocks.push(this.createBlockParsed('bullet-list', line.substring(2)));
+        i++;
+      } else if (line.startsWith('###### ')) {
+        blocks.push(this.createBlockParsed('heading-6', line.substring(7)));
+        i++;
+      } else if (line.startsWith('##### ')) {
+        blocks.push(this.createBlockParsed('heading-5', line.substring(6)));
+        i++;
+      } else if (line.startsWith('#### ')) {
+        blocks.push(this.createBlockParsed('heading-4', line.substring(5)));
         i++;
       } else if (line.startsWith('### ')) {
         blocks.push(this.createBlockParsed('heading-3', line.substring(4)));

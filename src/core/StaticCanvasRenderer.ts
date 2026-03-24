@@ -168,6 +168,9 @@ export class StaticCanvasRenderer {
       case 'ordered-list':
         this.renderOrderedNumber(ctx, layout, block, orderedListIndex);
         break;
+      case 'task-list':
+        this.renderCheckbox(ctx, layout, block, block.checked ?? false);
+        break;
     }
 
     for (const line of layout.lines) {
@@ -175,7 +178,12 @@ export class StaticCanvasRenderer {
         ctx.font = this.textMeasurer.buildFont(block.type, seg.style);
         ctx.fillStyle = this.getTextColor(block.type, seg.style);
 
-        // 行内代码特殊处理：非代码块中的 code 样式文本绘制灰色背景 + 红色文字
+        if (seg.style.highlight) {
+          ctx.fillStyle = '#fef08a';
+          ctx.fillRect(seg.x, line.y + 2, seg.width, line.height - 4);
+          ctx.fillStyle = this.getTextColor(block.type, seg.style);
+        }
+
         if (seg.style.code && block.type !== 'code-block') {
           ctx.fillStyle = '#e5e7eb';
           const padding = 2;
@@ -258,14 +266,43 @@ export class StaticCanvasRenderer {
   private renderOrderedNumber(ctx: CanvasRenderingContext2D, layout: { x: number; lines: Array<{ y: number; baseline: number }> }, block: Block, index: number) {
     if (layout.lines.length === 0) return;
     const firstLine = layout.lines[0];
-    ctx.font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false, underline: false });
+    ctx.font = this.textMeasurer.buildFont(block.type, { bold: false, italic: false, code: false, strikethrough: false, underline: false, highlight: false });
     ctx.fillStyle = '#374151';
     ctx.fillText(`${index}.`, layout.x - LIST_INDENT, firstLine.y + firstLine.baseline);
+  }
+
+  /** 任务列表左侧绘制 checkbox（方框 + 可选对勾） */
+  private renderCheckbox(ctx: CanvasRenderingContext2D, layout: { x: number; lines: Array<{ y: number; height: number }> }, block: Block, checked: boolean) {
+    if (layout.lines.length === 0) return;
+    const firstLine = layout.lines[0];
+    const size = 14;
+    const cx = layout.x - LIST_INDENT / 2 - size / 2;
+    const textCenter = this.textMeasurer.getTextVisualCenter(block.type);
+    const cy = firstLine.y + textCenter - size / 2;
+
+    ctx.strokeStyle = checked ? '#2563eb' : '#9ca3af';
+    ctx.lineWidth = 1.5;
+    this.roundRect(ctx, cx, cy, size, size, 2);
+    ctx.stroke();
+
+    if (checked) {
+      ctx.fillStyle = '#2563eb';
+      this.roundRect(ctx, cx, cy, size, size, 2);
+      ctx.fill();
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(cx + 3, cy + size / 2);
+      ctx.lineTo(cx + size / 2 - 1, cy + size - 4);
+      ctx.lineTo(cx + size - 3, cy + 3);
+      ctx.stroke();
+    }
   }
 
   private getTextColor(blockType: string, style: InlineStyle): string {
     if (style.color) return style.color;
     if (style.link) return '#2563eb';
+    if (blockType === 'heading-6') return '#6b7280';
     if (blockType === 'blockquote') return '#6b7280';
     if (blockType === 'code-block') return '#1f2937';
     return '#1f2937';
