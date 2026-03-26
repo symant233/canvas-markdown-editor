@@ -274,10 +274,37 @@ flowchart TD
 | — | `==text==` | ==高亮== |
 | — | `\*` `\[` 等 | 反斜杠转义 |
 
+### Mermaid 图表渲染
+
+语言标记为 `mermaid` 的代码块会自动调用 mermaid 库渲染为图表：
+
+```mermaid
+graph TD
+    A[Markdown 输入] --> B[MarkdownParser 解析]
+    B --> C[BlockStore 存储]
+    C --> D[LayoutEngine 布局]
+    D --> E[StaticCanvasRenderer 绘制]
+    E --> F[Canvas 画布输出]
+```
+
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant E as 编辑器
+    participant P as 解析器
+    participant R as 渲染器
+    U->>E: 输入文本
+    E->>P: 解析 Markdown
+    P->>E: 返回 Block[]
+    E->>R: 绘制到 Canvas
+    R-->>U: 显示结果
+```
+
 ### 代码块特殊行为
 
 - **语言标记**：`` ```javascript `` 快捷键创建带语言的代码块，序列化时保留语言标记
 - **语法高亮**：使用 `highlight.js` 对代码块进行语法着色渲染
+- **Mermaid 图表**：语言为 `mermaid` 时自动渲染为可视化图表
 - **Enter**：在代码块内插入 `\n`（而非创建新块），继续在代码块内编辑
 - **双次 Enter 退出**：末尾连续两次回车（`\n\n`）退出代码块，创建新段落
 - **Tab 缩进**：只影响光标所在行，不影响其他行

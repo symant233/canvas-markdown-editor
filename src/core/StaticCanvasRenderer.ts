@@ -1,7 +1,8 @@
-import type { Block, InlineStyle } from './types';
+import type { Block, BlockLayout, InlineStyle } from './types';
 import { TextMeasurer } from './TextMeasurer';
 import { computeVerticalScrollBlit } from './ScrollHelper';
 import { Colors } from '../config/colors';
+import { getMermaidImage, type MermaidCacheEntry } from './MermaidRenderer';
 
 const HEADING_BOTTOM_BORDER: Record<string, boolean> = {
   'heading-1': true,
@@ -161,6 +162,13 @@ export class StaticCanvasRenderer {
         return;
       case 'code-block':
         this.renderCodeBlockBackground(ctx, layout);
+        if (block.language === 'mermaid') {
+          const mermaidResult = getMermaidImage(block.rawText);
+          if (mermaidResult) {
+            this.renderMermaidDiagram(ctx, layout, mermaidResult);
+            return;
+          }
+        }
         break;
       case 'blockquote':
         this.renderQuoteBar(ctx, layout);
@@ -329,6 +337,20 @@ export class StaticCanvasRenderer {
     ctx.fillStyle = Colors.codeBlockBg;
     this.roundRect(ctx, layout.x - CODE_BLOCK_PADDING, layout.y - 4, layout.width + CODE_BLOCK_PADDING * 2, layout.height + 8, CODE_BLOCK_RADIUS);
     ctx.fill();
+  }
+
+  /** 将已渲染的 mermaid 图表图片绘制到 canvas 上，居中放置 */
+  private renderMermaidDiagram(ctx: CanvasRenderingContext2D, layout: BlockLayout, entry: MermaidCacheEntry) {
+    let imgW = entry.width;
+    let imgH = entry.height;
+    if (imgW > layout.width) {
+      const scale = layout.width / imgW;
+      imgH *= scale;
+      imgW = layout.width;
+    }
+    const imgX = layout.x + (layout.width - imgW) / 2;
+    const imgY = layout.y + CODE_BLOCK_PADDING;
+    ctx.drawImage(entry.image, imgX, imgY, imgW, imgH);
   }
 
   private renderQuoteBar(ctx: CanvasRenderingContext2D, layout: { x: number; y: number; height: number }) {

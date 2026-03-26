@@ -10,6 +10,7 @@ import { EventDispatcher, type RenderRequest } from '../core/EventDispatcher';
 import { InputManager } from '../core/InputManager';
 import { blocksToMarkdown } from '../core/BlockSerializer';
 import { parseInlineMarkdown } from '../core/InlineParser';
+import { requestMermaidRender, setMermaidReadyCallback } from '../core/MermaidRenderer';
 import type { Block, CursorPosition } from '../core/types';
 
 // ─── 核心模块单例（模块作用域创建，保证只实例化一次） ───
@@ -109,6 +110,7 @@ export class EditorManager {
           this.renderSelection();
           break;
         case 'full':
+          this.requestMermaidRenders();
           this.renderStatic();
           this.renderSelection();
           break;
@@ -138,9 +140,22 @@ export class EditorManager {
     selectionCanvas.addEventListener('pointermove', this.onPointerMove);
     selectionCanvas.addEventListener('pointerup', this.onPointerUp);
 
+    // mermaid 图片渲染完成后重新布局并刷新画布
+    setMermaidReadyCallback(() => {
+      layoutEngine.computeLayout(blockStore.getBlocks(), this.getContainerSize().width);
+      this.renderStatic();
+      this.renderSelection();
+      this.callbacks?.onScrollStateChange({
+        scrollY: dispatcher.getState().scrollY,
+        contentHeight: this.getContentHeight(),
+        viewportHeight: this.container?.clientHeight ?? 600,
+      });
+    });
+
     // 首次渲染
     this.setCanvasDimensions();
     layoutEngine.computeLayout(blockStore.getBlocks(), this.getContainerSize().width);
+    this.requestMermaidRenders();
     this.renderStatic();
     this.renderSelection();
     requestAnimationFrame(() => {
@@ -231,6 +246,7 @@ export class EditorManager {
     this.callbacks?.onRawMarkdownChange(markdown);
     this.isUpdatingFromRaw = true;
     dispatcher.handleRawMarkdownUpdate(parser.parse(markdown));
+    this.requestMermaidRenders();
     this.renderStatic();
     this.renderSelection();
     this.isUpdatingFromRaw = false;
@@ -242,6 +258,15 @@ export class EditorManager {
   }
 
   // ─── 内部方法 ───
+
+  /** 扫描所有块，对 language=mermaid 的代码块触发异步渲染 */
+  private requestMermaidRenders() {
+    for (const block of blockStore.getBlocks()) {
+      if (block.type === 'code-block' && block.language === 'mermaid') {
+        requestMermaidRender(block.rawText);
+      }
+    }
+  }
 
   private getContainerSize(): { width: number; height: number } {
     if (!this.container) return { width: 800, height: 600 };

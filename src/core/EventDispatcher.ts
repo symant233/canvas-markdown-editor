@@ -4,6 +4,7 @@ import { HitTester } from './HitTester';
 import { KeyboardHandler } from './KeyboardHandler';
 import { LayoutEngine } from './LayoutEngine';
 import { checkBlockShortcut, applyBlockShortcut } from './MarkdownShortcuts';
+import { isRenderedMermaid } from './MermaidRenderer';
 
 /**
  * 编辑器核心状态。
@@ -102,6 +103,22 @@ export class EventDispatcher {
 
     const pos = this.hitTester.hitPosition(sceneX, sceneY, this.blockStore.getBlocks());
     if (pos) {
+      // 已渲染的 mermaid 块为原子块：点击时选中整个块，不放置文本光标，不启动拖选
+      const hitBlock = this.blockStore.getBlock(pos.blockId);
+      if (hitBlock && isRenderedMermaid(hitBlock)) {
+        const rawLen = this.blockStore.getRawTextLength(hitBlock);
+        this.state.cursor = { blockId: hitBlock.id, offset: rawLen };
+        this.state.selection = {
+          anchor: { blockId: hitBlock.id, offset: 0 },
+          focus: { blockId: hitBlock.id, offset: rawLen },
+        };
+        this.state.isDragging = false;
+        this.resetBlink();
+        this.emit({ type: 'selectionOnly' });
+        this.focusInput();
+        return;
+      }
+
       this.state.cursor = pos;
       this.state.selection = null;
       this.state.isDragging = true;
@@ -161,6 +178,7 @@ export class EventDispatcher {
    */
   handleTextInput(text: string) {
     if (this.state.selection) {
+      if (this.isSelectionOnRenderedMermaid()) return;
       this.deleteSelectedRange();
     }
     if (!this.state.cursor) return;
@@ -196,6 +214,7 @@ export class EventDispatcher {
   handleCompositionEnd(text: string) {
     this.state.compositionText = '';
     if (this.state.selection) {
+      if (this.isSelectionOnRenderedMermaid()) return;
       this.deleteSelectedRange();
     }
     if (!this.state.cursor) return;
@@ -442,6 +461,14 @@ export class EventDispatcher {
 
     this.state.cursor = startPos;
     this.state.selection = null;
+  }
+
+  /** 检查当前选区是否覆盖了一个已渲染的 mermaid 块 */
+  private isSelectionOnRenderedMermaid(): boolean {
+    const sel = this.state.selection;
+    if (!sel || sel.anchor.blockId !== sel.focus.blockId) return false;
+    const block = this.blockStore.getBlock(sel.anchor.blockId);
+    return !!block && isRenderedMermaid(block);
   }
 
   /** 从指定块开始增量重排 */

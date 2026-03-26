@@ -1,5 +1,6 @@
 import type { Block, CursorPosition, SelectionRange } from './types';
 import { BlockStore } from './BlockStore';
+import { isRenderedMermaid } from './MermaidRenderer';
 
 /** moveCursor: 仅移动光标；dataChanged: 单块编辑；dataChangedWithSelection: 编辑后保留选区；delete: 删选区；splitBlock: 换行分块；mergeWithPrev: 退格合并前块；none: 不处理 */
 export type KeyboardAction =
@@ -139,7 +140,8 @@ export class KeyboardHandler {
       return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
     }
 
-    if (block.type === 'hr') {
+    // 原子块（hr / 已渲染 mermaid）：左右方向键直接跳到相邻块
+    if (block.type === 'hr' || isRenderedMermaid(block)) {
       const target = direction === 1
         ? this.blockStore.getNextBlock(cursor.blockId)
         : this.blockStore.getPrevBlock(cursor.blockId);
@@ -240,12 +242,12 @@ export class KeyboardHandler {
       return { type: 'moveCursor', cursor: newCursor, selection: newSelection };
     }
 
-    if (block.type === 'hr') {
+    if (block.type === 'hr' || isRenderedMermaid(block)) {
       const target = direction === -1
         ? this.blockStore.getPrevBlock(cursor.blockId)
         : this.blockStore.getNextBlock(cursor.blockId);
       if (!target?.layout) return { type: 'none' };
-      const targetOffset = target.type === 'hr' ? 0 : this.blockStore.getRawTextLength(target);
+      const targetOffset = (target.type === 'hr' || isRenderedMermaid(target)) ? 0 : this.blockStore.getRawTextLength(target);
       const newCursor: CursorPosition = { blockId: target.id, offset: direction === -1 ? targetOffset : 0 };
       const newSelection = extendSelection
         ? { anchor: currentSelection?.anchor ?? cursor, focus: newCursor }
@@ -363,23 +365,28 @@ export class KeyboardHandler {
     cursor: CursorPosition,
     selection: SelectionRange | null,
   ): KeyboardAction {
+    // 选中了已渲染的 mermaid 块 → 整块删除
     if (selection) {
+      if (selection.anchor.blockId === selection.focus.blockId) {
+        const selBlock = this.blockStore.getBlock(selection.anchor.blockId);
+        if (selBlock && isRenderedMermaid(selBlock)) {
+          return this.removeMermaidBlock(selBlock, 'backward');
+        }
+      }
       return { type: 'delete' };
     }
 
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block) return { type: 'none' };
 
-    /**
-     * 表单元格内退格仅删格内字符；offset 为 0 时不向上合并块，以免破坏表格块结构。
-     */
     if (cursor.tableCell && block.tableData) {
       if (cursor.offset === 0) return { type: 'none' };
       this.blockStore.deleteCharAt(cursor.blockId, cursor.offset - 1, cursor.tableCell);
       return { type: 'dataChanged', cursor: { blockId: cursor.blockId, offset: cursor.offset - 1, tableCell: cursor.tableCell } };
     }
 
-    if (block.type === 'hr') {
+    // 光标在原子块上：直接删整块
+    if (block.type === 'hr' || isRenderedMermaid(block)) {
       const prev = this.blockStore.getPrevBlock(cursor.blockId);
       const newCursor: CursorPosition = prev
         ? { blockId: prev.id, offset: this.blockStore.getRawTextLength(prev) }
@@ -395,7 +402,12 @@ export class KeyboardHandler {
         return { type: 'dataChanged', cursor };
       }
 
+      // 前方是 mermaid 块：删除它，光标留在当前块
       const prev = this.blockStore.getPrevBlock(cursor.blockId);
+      if (prev && isRenderedMermaid(prev)) {
+        this.blockStore.removeBlock(prev.id);
+        return { type: 'dataChanged', cursor };
+      }
       if (prev?.type === 'hr') {
         const prevPrev = this.blockStore.getPrevBlock(prev.id);
         this.blockStore.removeBlock(prev.id);
@@ -422,23 +434,27 @@ export class KeyboardHandler {
   /**
    * 有选区时交由上层 delete；否则：
    * 表内只删当前格，已在格尾则 noop；
-   * hr 块：删整块，光标移到下一块开头（无则 offset 0）；
-   * 块末：下一块为 hr 则删 hr；否则将下块 raw 拼入当前块并移除下块。
+   * hr / 已渲染 mermaid 块：删整块，光标移到下一块开头（无则 offset 0）；
+   * 块末：下一块为 hr / mermaid 则删之；否则将下块 raw 拼入当前块并移除下块。
    */
   private handleDelete(
     cursor: CursorPosition,
     selection: SelectionRange | null,
   ): KeyboardAction {
+    // 选中了已渲染的 mermaid 块 → 整块删除
     if (selection) {
+      if (selection.anchor.blockId === selection.focus.blockId) {
+        const selBlock = this.blockStore.getBlock(selection.anchor.blockId);
+        if (selBlock && isRenderedMermaid(selBlock)) {
+          return this.removeMermaidBlock(selBlock, 'forward');
+        }
+      }
       return { type: 'delete' };
     }
 
     const block = this.blockStore.getBlock(cursor.blockId);
     if (!block) return { type: 'none' };
 
-    /**
-     * 表单元格内 Delete 只删当前格；光标已在格尾则不做任何事（不吞下一格）。
-     */
     if (cursor.tableCell && block.tableData) {
       const cellLen = this.blockStore.getTableCellRawTextLength(block, cursor.tableCell.row, cursor.tableCell.col);
       if (cursor.offset >= cellLen) return { type: 'none' };
@@ -446,7 +462,8 @@ export class KeyboardHandler {
       return { type: 'dataChanged', cursor };
     }
 
-    if (block.type === 'hr') {
+    // 光标在原子块上：直接删整块
+    if (block.type === 'hr' || isRenderedMermaid(block)) {
       const next = this.blockStore.getNextBlock(cursor.blockId);
       const newCursor: CursorPosition = next
         ? { blockId: next.id, offset: 0 }
@@ -461,7 +478,8 @@ export class KeyboardHandler {
       const next = this.blockStore.getNextBlock(cursor.blockId);
       if (!next) return { type: 'none' };
 
-      if (next.type === 'hr') {
+      // 后方是原子块：直接删除后方块
+      if (next.type === 'hr' || isRenderedMermaid(next)) {
         this.blockStore.removeBlock(next.id);
         return { type: 'dataChanged', cursor };
       }
@@ -485,11 +503,13 @@ export class KeyboardHandler {
     cursor: CursorPosition,
     selection: SelectionRange | null,
   ): KeyboardAction {
+    const curBlock = this.blockStore.getBlock(cursor.blockId);
+    if (curBlock && isRenderedMermaid(curBlock)) return { type: 'none' };
+
     if (selection) {
       return { type: 'delete' };
     }
 
-    /** 表内 Enter 不 splitBlock，避免把整张表拆成两个块。 */
     if (cursor.tableCell) return { type: 'none' };
 
     const newCursor = this.blockStore.splitBlock(cursor);
@@ -630,6 +650,28 @@ export class KeyboardHandler {
       focus: { blockId: block.id, offset: end },
     };
     return { type: 'dataChangedWithSelection', cursor: newCursor, selection: newSelection };
+  }
+
+  /** 整块删除已渲染的 mermaid 块，光标移动到相邻块 */
+  private removeMermaidBlock(block: Block, direction: 'backward' | 'forward'): KeyboardAction {
+    const prev = this.blockStore.getPrevBlock(block.id);
+    const next = this.blockStore.getNextBlock(block.id);
+    let newCursor: CursorPosition;
+    if (direction === 'backward') {
+      newCursor = prev
+        ? { blockId: prev.id, offset: this.blockStore.getRawTextLength(prev) }
+        : next
+          ? { blockId: next.id, offset: 0 }
+          : { blockId: block.id, offset: 0 };
+    } else {
+      newCursor = next
+        ? { blockId: next.id, offset: 0 }
+        : prev
+          ? { blockId: prev.id, offset: this.blockStore.getRawTextLength(prev) }
+          : { blockId: block.id, offset: 0 };
+    }
+    this.blockStore.removeBlock(block.id);
+    return { type: 'dataChanged', cursor: newCursor };
   }
 
   /** 将 visual 偏移定位到行号和行内偏移（含 newlineBefore 的计数） */

@@ -2,6 +2,7 @@ import type { Block, CursorPosition, SelectionRange } from './types';
 import { TextMeasurer } from './TextMeasurer';
 import { BlockStore } from './BlockStore';
 import { Colors } from '../config/colors';
+import { isRenderedMermaid } from './MermaidRenderer';
 
 /** 交互层渲染器，绘制光标、选区高亮和 IME 组合文本 */
 export class SelectionCanvasRenderer {
@@ -73,6 +74,9 @@ export class SelectionCanvasRenderer {
     blocks: readonly Block[],
     cursor: CursorPosition,
   ) {
+    const block = blocks.find(b => b.id === cursor.blockId);
+    if (block && isRenderedMermaid(block)) return;
+
     const pos = this.getCursorPixelPosition(blocks, cursor);
     if (!pos) return;
 
@@ -266,7 +270,17 @@ export class SelectionCanvasRenderer {
       const isFocusBlock = block.id === focus.blockId;
 
       if (isAnchorBlock && isFocusBlock) {
-        // 单格内选区：在 cellLayout.lines 上绘制，避免误用整块 block.layout.lines。
+        // 已渲染 mermaid 块选中时绘制全块高亮覆盖层，匹配代码块背景区域
+        if (isRenderedMermaid(block)) {
+          const pad = 12;
+          ctx.fillRect(
+            block.layout.x - pad,
+            block.layout.y - 4,
+            block.layout.width + pad * 2,
+            block.layout.height + 8,
+          );
+          return;
+        }
         if (anchor.tableCell && focus.tableCell && block.layout.tableCells &&
             anchor.tableCell.row === focus.tableCell.row && anchor.tableCell.col === focus.tableCell.col) {
           const { row, col } = anchor.tableCell;

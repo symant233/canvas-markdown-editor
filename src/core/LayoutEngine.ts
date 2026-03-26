@@ -1,5 +1,6 @@
 import type { Block, BlockLayout, LineLayout, SegmentLayout, TableCellLayout } from './types';
 import { TextMeasurer } from './TextMeasurer';
+import { getMermaidImage } from './MermaidRenderer';
 
 /** 左/右内边距 */
 const PADDING_LEFT = 20;
@@ -84,6 +85,28 @@ export class LayoutEngine {
 
     if (block.type === 'table' && block.tableData) {
       return this.layoutTable(block, x, y, maxWidth);
+    }
+
+    if (block.type === 'code-block' && block.language === 'mermaid') {
+      const mermaidResult = getMermaidImage(block.rawText);
+      if (mermaidResult) {
+        const effectiveWidth = maxWidth - CODE_BLOCK_PADDING * 2;
+        let imgWidth = mermaidResult.width;
+        let imgHeight = mermaidResult.height;
+        if (imgWidth > effectiveWidth) {
+          const scale = effectiveWidth / imgWidth;
+          imgHeight = imgHeight * scale;
+          imgWidth = effectiveWidth;
+        }
+        const vertPad = CODE_BLOCK_PADDING;
+        return {
+          x: x + CODE_BLOCK_PADDING,
+          y,
+          width: effectiveWidth,
+          height: imgHeight + vertPad * 2,
+          lines: [],
+        };
+      }
     }
 
     let effectiveX = x;
