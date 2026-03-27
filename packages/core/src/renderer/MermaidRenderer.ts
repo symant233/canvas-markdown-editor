@@ -3,7 +3,7 @@
  * 使用动态 import 实现按需加载，仅在遇到 mermaid 代码块时才下载 mermaid 库。
  */
 
-import type { Block } from './types';
+import type { Block } from '../types';
 
 type MermaidAPI = {
   initialize: (config: Record<string, unknown>) => void;

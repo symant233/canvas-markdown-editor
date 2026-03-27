@@ -1,5 +1,5 @@
-import type { InlineSegment } from './types';
-import { DEFAULT_INLINE_STYLE } from './types';
+import type { InlineSegment } from '../types';
+import { DEFAULT_INLINE_STYLE } from '../types';
 
 export interface ParseResult {
   segments: InlineSegment[];

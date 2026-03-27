@@ -1,7 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { editorManager } from './editor/EditorManager';
-import type { ScrollState } from './editor/EditorManager';
-import SAMPLE_MARKDOWN from '../README.md?raw';
+import { editorManager } from '@canvas-md/core';
+import type { ScrollState } from '@canvas-md/core';
+import SAMPLE_MARKDOWN from '../../../README.md?raw';
 import { Scrollbar } from './components/Scrollbar';
 import './App.css';
 
