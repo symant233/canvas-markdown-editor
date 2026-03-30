@@ -1,6 +1,6 @@
-import type { Block, CursorPosition, SelectionRange } from './types';
+import type { Block, CursorPosition, SelectionRange } from '../types';
 import { BlockStore } from './BlockStore';
-import { isRenderedMermaid } from './MermaidRenderer';
+import { isRenderedMermaid } from '../renderer/MermaidRenderer';
 
 /** moveCursor: 仅移动光标；dataChanged: 单块编辑；dataChangedWithSelection: 编辑后保留选区；delete: 删选区；splitBlock: 换行分块；mergeWithPrev: 退格合并前块；none: 不处理 */
 export type KeyboardAction =

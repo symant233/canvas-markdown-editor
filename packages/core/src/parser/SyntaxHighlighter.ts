@@ -1,6 +1,6 @@
 import hljs from 'highlight.js';
-import type { InlineSegment } from './types';
-import { DEFAULT_INLINE_STYLE } from './types';
+import type { InlineSegment } from '../types';
+import { DEFAULT_INLINE_STYLE } from '../types';
 
 /** GitHub 风格配色（浅色主题） */
 const TOKEN_COLORS: Record<string, string> = {

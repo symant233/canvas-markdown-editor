@@ -1,7 +1,7 @@
-import type { Block, CursorPosition, TableCell } from './types';
-import { createBlock, DEFAULT_INLINE_STYLE } from './types';
-import { parseInlineMarkdown } from './InlineParser';
-import { highlightCode } from './SyntaxHighlighter';
+import type { Block, CursorPosition, TableCell } from '../types';
+import { createBlock, DEFAULT_INLINE_STYLE } from '../types';
+import { parseInlineMarkdown } from '../parser/InlineParser';
+import { highlightCode } from '../parser/SyntaxHighlighter';
 
 type Listener = () => void;
 

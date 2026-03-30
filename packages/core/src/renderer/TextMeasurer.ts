@@ -1,4 +1,4 @@
-import type { BlockType, InlineStyle } from './types';
+import type { BlockType, InlineStyle } from '../types';
 
 export interface FontConfig {
   family: string;

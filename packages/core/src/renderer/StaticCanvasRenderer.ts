@@ -1,7 +1,7 @@
-import type { Block, BlockLayout, InlineStyle } from './types';
+import type { Block, BlockLayout, InlineStyle } from '../types';
 import { TextMeasurer } from './TextMeasurer';
 import { computeVerticalScrollBlit } from './ScrollHelper';
-import { Colors } from '../config/colors';
+import { Colors } from './colors';
 import { getMermaidImage, type MermaidCacheEntry } from './MermaidRenderer';
 
 const HEADING_BOTTOM_BORDER: Record<string, boolean> = {
@@ -239,7 +239,7 @@ export class StaticCanvasRenderer {
     }
   }
 
-  private renderTable(ctx: CanvasRenderingContext2D, block: Block, layout: import('./types').BlockLayout) {
+  private renderTable(ctx: CanvasRenderingContext2D, block: Block, layout: import('../types').BlockLayout) {
     if (!layout.tableCells || !block.tableData) return;
     const data = block.tableData;
 

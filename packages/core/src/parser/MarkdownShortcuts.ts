@@ -1,4 +1,4 @@
-import type { Block, BlockType } from './types';
+import type { Block, BlockType } from '../types';
 
 interface ShortcutResult {
   matched: boolean;

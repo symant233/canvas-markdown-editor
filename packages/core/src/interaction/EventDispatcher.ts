@@ -1,10 +1,10 @@
-import type { Block, CursorPosition, SelectionRange } from './types';
+import type { Block, CursorPosition, SelectionRange } from '../types';
 import { BlockStore } from './BlockStore';
 import { HitTester } from './HitTester';
 import { KeyboardHandler } from './KeyboardHandler';
-import { LayoutEngine } from './LayoutEngine';
-import { checkBlockShortcut, applyBlockShortcut } from './MarkdownShortcuts';
-import { isRenderedMermaid } from './MermaidRenderer';
+import { LayoutEngine } from '../renderer/LayoutEngine';
+import { checkBlockShortcut, applyBlockShortcut } from '../parser/MarkdownShortcuts';
+import { isRenderedMermaid } from '../renderer/MermaidRenderer';
 
 /**
  * 编辑器核心状态。

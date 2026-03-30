@@ -1,4 +1,4 @@
-import type { Block } from './types';
+import type { Block } from '../types';
 
 /** 将 Block 数组序列化回 Markdown 文本 */
 export function blocksToMarkdown(blocks: readonly Block[]): string {

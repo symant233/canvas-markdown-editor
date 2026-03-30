@@ -1,5 +1,5 @@
-import type { Block, BlockType, TableAlignment, TableCell, TableData } from './types';
-import { DEFAULT_INLINE_STYLE, createBlock } from './types';
+import type { Block, BlockType, TableAlignment, TableCell, TableData } from '../types';
+import { DEFAULT_INLINE_STYLE, createBlock } from '../types';
 import { parseInlineMarkdown } from './InlineParser';
 import { highlightCode } from './SyntaxHighlighter';
 

@@ -1,4 +1,4 @@
-import type { Block, BlockLayout, LineLayout, SegmentLayout, TableCellLayout } from './types';
+import type { Block, BlockLayout, LineLayout, SegmentLayout, TableCellLayout } from '../types';
 import { TextMeasurer } from './TextMeasurer';
 import { getMermaidImage } from './MermaidRenderer';
 
@@ -250,7 +250,7 @@ export class LayoutEngine {
         const extra = (maxWidth - totalNatural) / colCount;
         for (let c = 0; c < colCount; c++) colWidths[c] = naturalWidths[c] + extra;
       } else {
-        let remaining = maxWidth - totalMin;
+        const remaining = maxWidth - totalMin;
         const surplusTotal = naturalWidths.reduce((s, w) => s + Math.max(0, w - minColWidth), 0);
         if (surplusTotal > 0) {
           for (let c = 0; c < colCount; c++) {

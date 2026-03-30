@@ -1,7 +1,7 @@
-import type { Block, CursorPosition, SelectionRange } from './types';
+import type { Block, CursorPosition, SelectionRange } from '../types';
 import { TextMeasurer } from './TextMeasurer';
-import { BlockStore } from './BlockStore';
-import { Colors } from '../config/colors';
+import { BlockStore } from '../interaction/BlockStore';
+import { Colors } from './colors';
 import { isRenderedMermaid } from './MermaidRenderer';
 
 /** 交互层渲染器，绘制光标、选区高亮和 IME 组合文本 */
@@ -332,8 +332,8 @@ export class SelectionCanvasRenderer {
    */
   private highlightVisualRangeInLines(
     ctx: CanvasRenderingContext2D,
-    blockType: import('./types').BlockType,
-    lines: readonly import('./types').LineLayout[],
+    blockType: import('../types').BlockType,
+    lines: readonly import('../types').LineLayout[],
     startVisual: number,
     endVisual: number,
   ) {

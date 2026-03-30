@@ -1,17 +1,17 @@
-import { BlockStore } from '../core/BlockStore';
-import { MarkdownParser } from '../core/MarkdownParser';
-import { TextMeasurer } from '../core/TextMeasurer';
-import { LayoutEngine } from '../core/LayoutEngine';
-import { StaticCanvasRenderer } from '../core/StaticCanvasRenderer';
-import { SelectionCanvasRenderer } from '../core/SelectionCanvasRenderer';
-import { KeyboardHandler } from '../core/KeyboardHandler';
-import { HitTester } from '../core/HitTester';
-import { EventDispatcher, type RenderRequest } from '../core/EventDispatcher';
-import { InputManager } from '../core/InputManager';
-import { blocksToMarkdown } from '../core/BlockSerializer';
-import { parseInlineMarkdown } from '../core/InlineParser';
-import { requestMermaidRender, setMermaidReadyCallback } from '../core/MermaidRenderer';
-import type { Block, CursorPosition } from '../core/types';
+import { BlockStore } from './interaction/BlockStore';
+import { MarkdownParser } from './parser/MarkdownParser';
+import { TextMeasurer } from './renderer/TextMeasurer';
+import { LayoutEngine } from './renderer/LayoutEngine';
+import { StaticCanvasRenderer } from './renderer/StaticCanvasRenderer';
+import { SelectionCanvasRenderer } from './renderer/SelectionCanvasRenderer';
+import { KeyboardHandler } from './interaction/KeyboardHandler';
+import { HitTester } from './interaction/HitTester';
+import { EventDispatcher, type RenderRequest } from './interaction/EventDispatcher';
+import { InputManager } from './interaction/InputManager';
+import { blocksToMarkdown } from './parser/BlockSerializer';
+import { parseInlineMarkdown } from './parser/InlineParser';
+import { requestMermaidRender, setMermaidReadyCallback } from './renderer/MermaidRenderer';
+import type { Block, CursorPosition } from './types';
 
 // ─── 核心模块单例（模块作用域创建，保证只实例化一次） ───
 

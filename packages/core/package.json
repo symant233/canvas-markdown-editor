@@ -1,0 +1,13 @@
+{
+  "name": "@canvas-md/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "highlight.js": "^11.9.0",
+    "mermaid": "^11.13.0"
+  }
+}

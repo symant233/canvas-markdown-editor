@@ -1,5 +1,5 @@
-import type { Block, CursorPosition, InlineStyle, LineLayout } from './types';
-import { TextMeasurer } from './TextMeasurer';
+import type { Block, CursorPosition, InlineStyle, LineLayout } from '../types';
+import { TextMeasurer } from '../renderer/TextMeasurer';
 import { BlockStore } from './BlockStore';
 
 /**
